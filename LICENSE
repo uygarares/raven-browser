@@ -1,0 +1,65 @@
+Raven Browser License
+Version 1.0
+
+Copyright (c) 2026 uygarares. All rights reserved.
+
+"Raven Browser" (the "Software") is the source code, designs, documentation
+and official builds published at https://github.com/uygarares/raven-browser
+(the "Official Repository"). "Owner" means uygarares, the copyright holder.
+
+1. What you MAY do
+
+   a. Use. You may download, install and use official builds of the Software
+      free of charge, for personal or commercial use.
+
+   b. Study and modify. You may read, study and modify the source code for
+      your own private use and testing.
+
+   c. Contribute. You may fork the Official Repository on GitHub solely to
+      prepare contributions, and submit your modifications to the Official
+      Repository as pull requests, under the terms in CONTRIBUTING.md.
+
+   d. Share unmodified. You may share unmodified official builds or an
+      unmodified copy of the source code, free of charge, as long as this
+      License and all copyright notices are kept intact.
+
+2. What you MAY NOT do
+
+   a. Distribute, publish or make available any modified version, fork or
+      derivative work of the Software, under any name, other than by
+      submitting it to the Official Repository.
+
+   b. Publish, rename or rebrand the Software, or any part of it, as a
+      different product.
+
+   c. Sell the Software, or charge for access to it.
+
+   d. Remove or change this License, copyright notices or attributions.
+
+   e. Use the name "Raven", "Raven Browser" or the Raven logo for any other
+      product or in a way that suggests endorsement by the Owner, except as
+      allowed in TRADEMARK.md.
+
+3. Contributions
+
+   Contributions accepted into the Official Repository become part of the
+   Software and are governed by CONTRIBUTING.md.
+
+4. Third-party components
+
+   The Software uses third-party libraries that keep their own licenses.
+   This License does not change those licenses.
+
+5. Termination
+
+   If you break any term of this License, your rights under it end
+   automatically.
+
+6. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED. IN NO EVENT SHALL THE OWNER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+Any right not expressly granted in this License is reserved by the Owner.
+For any other permission, contact the Owner through the Official Repository.
