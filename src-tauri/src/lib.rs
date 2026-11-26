@@ -57,6 +57,7 @@ pub fn run() {
             tabs::switch_tab,
             tabs::move_tab_command,
             tabs::tab_action,
+            tabs::group_command,
             tabs::open_url,
             tabs::navigate,
             tabs::go_back,

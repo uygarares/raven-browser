@@ -21,6 +21,7 @@ pub struct SavedTab {
     pub pinned: bool,
     /// When the tab was last opened (seconds since 1970), for the archive.
     pub last_used: u64,
+    pub group: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -29,6 +30,7 @@ pub struct SavedWindow {
     pub tabs: Vec<SavedTab>,
     /// Position of the active tab in `tabs`.
     pub active: usize,
+    pub groups: Vec<crate::tabs::TabGroup>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -55,7 +57,7 @@ impl Session {
         if self.tabs.is_empty() {
             return Vec::new();
         }
-        vec![SavedWindow { tabs: self.tabs.clone(), active: self.active }]
+        vec![SavedWindow { tabs: self.tabs.clone(), active: self.active, groups: Vec::new() }]
     }
 }
 

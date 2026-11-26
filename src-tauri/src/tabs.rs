@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{
     webview::{DownloadEvent, NewWindowResponse, PageLoadEvent, WebviewBuilder},
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webview, WebviewUrl,
@@ -51,7 +51,21 @@ pub struct TabInfo {
     /// When the tab was last opened, in seconds since 1970 (for the archive).
     #[serde(skip)]
     last_used: u64,
+    /// The tab group it belongs to (Chrome-like coloured groups).
+    group: Option<u32>,
 }
+
+/// A named, coloured group of tabs that can be folded (collapsed).
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct TabGroup {
+    pub id: u32,
+    pub name: String,
+    /// One of GROUP_COLORS.
+    pub color: String,
+    pub collapsed: bool,
+}
+
+pub const GROUP_COLORS: &[&str] = &["blue", "violet", "pink", "red", "orange", "yellow", "green", "cyan", "grey"];
 
 /// Decodes %XX escapes (UTF-8) in text from a raven-action: address.
 pub fn percent_decode(text: &str) -> String {
@@ -104,6 +118,7 @@ struct WindowTabs {
     /// The tab that links were last opened from, and the last tab opened from it,
     /// so several links opened in a row line up next to each other, like Chrome.
     last_opened: Option<(u32, u32)>,
+    groups: Vec<TabGroup>,
 }
 
 #[derive(Default)]
@@ -111,6 +126,7 @@ struct TabList {
     windows: HashMap<String, WindowTabs>,
     info: HashMap<u32, TabInfo>,
     next_id: u32,
+    next_group: u32,
     /// Addresses of recently closed tabs, newest last (for Ctrl+Shift+T).
     closed: Vec<String>,
 }
@@ -141,6 +157,7 @@ pub struct TabsState {
     window: String,
     tabs: Vec<TabInfo>,
     active: Option<u32>,
+    groups: Vec<TabGroup>,
 }
 
 /// Script added to every website: middle click and Ctrl+click on a link ask
@@ -227,7 +244,8 @@ fn snapshot(app: &AppHandle, window: &str) -> TabsState {
             w.order.iter().filter_map(|id| list.info.get(id).cloned()).collect()
         });
         let active = list.windows.get(window).and_then(|w| w.active);
-        TabsState { window: window.to_string(), tabs, active }
+        let groups = list.windows.get(window).map(|w| w.groups.clone()).unwrap_or_default();
+        TabsState { window: window.to_string(), tabs, active, groups }
     })
 }
 
@@ -251,13 +269,14 @@ fn save_session(app: &AppHandle) {
                         title: tab.title.clone(),
                         pinned: tab.pinned,
                         last_used: tab.last_used,
+                        group: tab.group,
                     })
                     .collect();
                 let active = tabs
                     .active
                     .and_then(|id| tabs.order.iter().position(|t| *t == id))
                     .unwrap_or(0);
-                Some(session::SavedWindow { tabs: saved_tabs, active })
+                Some(session::SavedWindow { tabs: saved_tabs, active, groups: tabs.groups.clone() })
             })
             .filter(|window| !window.tabs.is_empty())
             .collect::<Vec<_>>()
@@ -323,6 +342,11 @@ fn add_tab(app: &AppHandle, window: &str, url: &str, title: &str, place: Place, 
         list.next_id += 1;
         let id = list.next_id;
         let pinned_count = list.pinned_count(window);
+        // Links opened from a grouped tab join its group, like Chrome.
+        let inherited = match place {
+            Place::NextTo(opener) if !pinned => list.info.get(&opener).and_then(|t| t.group),
+            _ => None,
+        };
         let tabs = list.windows.entry(window.to_string()).or_default();
         let mut index = match place {
             Place::End => tabs.order.len(),
@@ -362,6 +386,7 @@ fn add_tab(app: &AppHandle, window: &str, url: &str, title: &str, place: Place, 
                 memory: None,
                 last_seen: std::time::Instant::now(),
                 last_used: now_secs(),
+                group: inherited,
             },
         );
         id
@@ -1041,10 +1066,208 @@ pub fn move_tab(app: &AppHandle, id: u32, index: usize) -> Result<(), String> {
         };
         let to = index.clamp(low, high.max(low)).min(tabs.order.len());
         tabs.order.insert(to, id);
+        // Dropped inside a group: it joins; dragged out: it leaves.
+        if !pinned {
+            let map = group_map(list, &window);
+            let order = list.windows.get(&window)?.order.clone();
+            let group = group_after_move(&order, &map, id);
+            list.info.get_mut(&id)?.group = group;
+            drop_empty_groups(list, &window);
+        }
         Some(window)
     })
     .ok_or("Tab not found")?;
     publish(app, &window);
+    Ok(())
+}
+
+// Tab groups.
+
+/// After `id` moved, it joins the group it landed inside, or leaves its group
+/// if it is no longer next to it. Pure, for tests.
+pub fn group_after_move(order: &[u32], group_of: &HashMap<u32, Option<u32>>, id: u32) -> Option<u32> {
+    let at = order.iter().position(|t| *t == id)?;
+    let left = at.checked_sub(1).and_then(|i| order.get(i)).and_then(|t| group_of.get(t).copied().flatten());
+    let right = order.get(at + 1).and_then(|t| group_of.get(t).copied().flatten());
+    let own = group_of.get(&id).copied().flatten();
+    match (left, right) {
+        (Some(l), Some(r)) if l == r => Some(l),
+        _ if own.is_some() && (left == own || right == own) => own,
+        _ => None,
+    }
+}
+
+/// Where a tab goes when it joins group `group`: right after the group's last tab.
+pub fn group_insert_index(order: &[u32], group_of: &HashMap<u32, Option<u32>>, group: u32) -> Option<usize> {
+    order.iter().rposition(|t| group_of.get(t).copied().flatten() == Some(group)).map(|i| i + 1)
+}
+
+fn group_map(list: &TabList, window: &str) -> HashMap<u32, Option<u32>> {
+    list.windows
+        .get(window)
+        .map(|w| w.order.iter().map(|id| (*id, list.info.get(id).and_then(|t| t.group))).collect())
+        .unwrap_or_default()
+}
+
+/// Drops groups that have no tabs left.
+fn drop_empty_groups(list: &mut TabList, window: &str) {
+    let used: std::collections::HashSet<u32> = list
+        .windows
+        .get(window)
+        .map(|w| w.order.iter().filter_map(|id| list.info.get(id).and_then(|t| t.group)).collect())
+        .unwrap_or_default();
+    if let Some(tabs) = list.windows.get_mut(window) {
+        tabs.groups.retain(|g| used.contains(&g.id));
+    }
+}
+
+/// Puts a tab in a group (a new one when `group` is None), or takes it out (`join` false).
+pub fn set_group(app: &AppHandle, id: u32, group: Option<u32>, join: bool) -> Result<(), String> {
+    let window = with_tabs(app, |list| {
+        let info = list.info.get(&id)?;
+        if info.pinned {
+            return None;
+        }
+        let window = info.window.clone();
+        let old = info.group;
+        let target = if !join {
+            None
+        } else if let Some(group) = group {
+            Some(group)
+        } else {
+            list.next_group += 1;
+            let new_id = list.next_group;
+            let used = list.windows.get(&window).map(|w| w.groups.len()).unwrap_or(0);
+            let color = GROUP_COLORS[used % GROUP_COLORS.len()].to_string();
+            list.windows.get_mut(&window)?.groups.push(TabGroup { id: new_id, name: String::new(), color, collapsed: false });
+            Some(new_id)
+        };
+        list.info.get_mut(&id)?.group = target;
+        // Keep groups together: move the tab next to its group, or out of its old one.
+        let map = group_map(list, &window);
+        let tabs = list.windows.get_mut(&window)?;
+        let place = match (target, old) {
+            (Some(g), _) => {
+                let mut without = tabs.order.clone();
+                without.retain(|t| *t != id);
+                group_insert_index(&without, &map, g)
+            }
+            (None, Some(g)) => {
+                let mut without = tabs.order.clone();
+                without.retain(|t| *t != id);
+                group_insert_index(&without, &map, g)
+            }
+            _ => None,
+        };
+        if let Some(index) = place {
+            tabs.order.retain(|t| *t != id);
+            let index = index.min(tabs.order.len());
+            tabs.order.insert(index, id);
+        }
+        drop_empty_groups(list, &window);
+        Some(window)
+    })
+    .ok_or("Sabit sekmeler gruplanamaz")?;
+    publish(app, &window);
+    Ok(())
+}
+
+/// Renames, recolours, folds or unfolds a group.
+pub fn update_group(app: &AppHandle, window: &str, group: u32, name: Option<String>, color: Option<String>, collapsed: Option<bool>) {
+    let switch_away = with_tabs(app, |list| {
+        let tabs = list.windows.get_mut(window)?;
+        let g = tabs.groups.iter_mut().find(|g| g.id == group)?;
+        if let Some(name) = name {
+            g.name = name.chars().take(40).collect();
+        }
+        if let Some(color) = color.filter(|c| GROUP_COLORS.contains(&c.as_str())) {
+            g.color = color;
+        }
+        if let Some(collapsed) = collapsed {
+            g.collapsed = collapsed;
+        }
+        // Folding the group of the open tab: open the nearest tab outside it.
+        let active = tabs.active?;
+        if !collapsed.unwrap_or(false) || list.info.get(&active)?.group != Some(group) {
+            return None;
+        }
+        let at = tabs.order.iter().position(|t| *t == active)?;
+        let outside = |t: &u32| list.info.get(t).is_some_and(|i| i.group != Some(group));
+        tabs.order[at..].iter().find(|t| outside(t)).or_else(|| tabs.order[..at].iter().rev().find(|t| outside(t))).copied()
+    });
+    match switch_away {
+        Some(other) => show_only(app, other),
+        None => publish(app, window),
+    }
+}
+
+/// Takes every tab out of a group.
+pub fn ungroup(app: &AppHandle, window: &str, group: u32) {
+    with_tabs(app, |list| {
+        for info in list.info.values_mut() {
+            if info.window == window && info.group == Some(group) {
+                info.group = None;
+            }
+        }
+        drop_empty_groups(list, window);
+    });
+    publish(app, window);
+}
+
+/// Closes every tab of a group.
+pub fn close_group(app: &AppHandle, window: &str, group: u32) {
+    let ids: Vec<u32> = with_tabs(app, |list| {
+        list.windows
+            .get(window)
+            .map(|w| w.order.iter().filter(|id| list.info.get(id).is_some_and(|t| t.group == Some(group))).copied().collect())
+            .unwrap_or_default()
+    });
+    for id in ids {
+        let _ = close(app, id);
+    }
+}
+
+/// Restores a window's groups from the session.
+pub fn restore_groups(app: &AppHandle, window: &str, groups: &[TabGroup], members: &[(u32, u32)]) {
+    with_tabs(app, |list| {
+        let next = groups.iter().map(|g| g.id).max().unwrap_or(0);
+        list.next_group = list.next_group.max(next);
+        if let Some(tabs) = list.windows.get_mut(window) {
+            tabs.groups = groups.to_vec();
+        }
+        for (tab, group) in members {
+            if let Some(info) = list.info.get_mut(tab) {
+                info.group = Some(*group);
+            }
+        }
+        drop_empty_groups(list, window);
+    });
+}
+
+#[tauri::command]
+pub async fn group_command(
+    app: AppHandle,
+    webview: Webview,
+    group: u32,
+    action: String,
+    name: Option<String>,
+    color: Option<String>,
+) -> Result<(), String> {
+    let window = windows::window_of(&webview);
+    match action.as_str() {
+        "rename" => update_group(&app, &window, group, name, None, None),
+        "color" => update_group(&app, &window, group, None, color, None),
+        "fold" => update_group(&app, &window, group, None, None, Some(true)),
+        "unfold" => update_group(&app, &window, group, None, None, Some(false)),
+        "ungroup" => ungroup(&app, &window, group),
+        "close" => close_group(&app, &window, group),
+        "new-tab" => {
+            let id = create_tab(&app, &window, NEW_TAB, true).map_err(|e| e.to_string())?;
+            update_group(&app, &window, group, None, None, Some(false));
+            set_group(&app, id, Some(group), true)?;
+        }
+        _ => return Err(format!("Unknown group action {action}")),
+    }
     Ok(())
 }
 
@@ -1166,6 +1389,12 @@ pub async fn tab_action(app: AppHandle, id: u32, action: String) -> Result<(), S
         "close" => close(&app, id),
         "close-others" => close_others(&app, id, false),
         "close-right" => close_others(&app, id, true),
+        "group-new" => set_group(&app, id, None, true),
+        "ungroup" => set_group(&app, id, None, false),
+        other if other.starts_with("group-") => {
+            let group = other.trim_start_matches("group-").parse().map_err(|_| "Bad group")?;
+            set_group(&app, id, Some(group), true)
+        }
         "reopen-closed" => {
             let window = window_of_tab(&app, id).ok_or("Tab not found")?;
             reopen_closed(&app, &window)
@@ -1221,6 +1450,22 @@ mod tests {
 
     fn to_url(input: &str) -> Result<tauri::Url, String> {
         super::to_url(input, GOOGLE)
+    }
+
+    #[test]
+    fn groups_follow_moves() {
+        use std::collections::HashMap;
+        let map: HashMap<u32, Option<u32>> = [(1, None), (2, Some(7)), (3, Some(7)), (4, None), (5, Some(7))].into();
+        // 5 dropped between 2 and 3: stays in 7.
+        assert_eq!(super::group_after_move(&[1, 2, 5, 3, 4], &map, 5), Some(7));
+        // 1 dropped between 2 and 3: joins 7.
+        assert_eq!(super::group_after_move(&[2, 1, 3, 4], &map, 1), Some(7));
+        // 3 dragged to the far right: leaves 7.
+        assert_eq!(super::group_after_move(&[1, 2, 4, 3], &map, 3), None);
+        // 3 at the group's edge stays.
+        assert_eq!(super::group_after_move(&[1, 2, 3, 4], &map, 3), Some(7));
+        assert_eq!(super::group_insert_index(&[1, 2, 3, 4], &map, 7), Some(3));
+        assert_eq!(super::group_insert_index(&[1, 4], &map, 7), None);
     }
 
     #[test]

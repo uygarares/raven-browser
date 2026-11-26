@@ -342,6 +342,13 @@ pub fn open_window(
                 .iter()
                 .map(|tab| tabs::add_sleeping_tab(app, &label, &tab.url, &tab.title, tab.pinned, tab.last_used))
                 .collect();
+            let members: Vec<(u32, u32)> = saved
+                .tabs
+                .iter()
+                .zip(&ids)
+                .filter_map(|(tab, id)| tab.group.map(|g| (*id, g)))
+                .collect();
+            tabs::restore_groups(app, &label, &saved.groups, &members);
             if let Some(active) = ids.get(saved.active).or(ids.first()).copied() {
                 tabs::show_only(app, active);
             }

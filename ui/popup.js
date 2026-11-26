@@ -164,6 +164,16 @@ function drawTabMenu(data) {
     item("pin", data.pinned ? "Sabitlemeyi kaldır" : "Sabitle", null, tab(data.pinned ? "unpin" : "pin")),
     item(data.muted ? "sound" : "muted", data.muted ? "Sitenin sesini aç" : "Siteyi sessize al", null, tab(data.muted ? "unmute" : "mute")),
     el("hr"),
+    ...(data.pinned
+      ? []
+      : [
+          item("plus", "Yeni gruba ekle", null, tab("group-new")),
+          ...(data.groups || []).map((group) =>
+            item("tab", `Gruba ekle: ${group.name || "Adsız grup"}`, null, tab(`group-${group.id}`)),
+          ),
+          ...(data.group != null ? [item("close", "Gruptan çıkar", null, tab("ungroup"))] : []),
+          el("hr"),
+        ]),
     item("close", "Kapat", "Ctrl+W", tab("close")),
     item("close", "Diğer sekmeleri kapat", null, tab("close-others"), { disabled: !data.others }),
     item("close", "Sağdaki sekmeleri kapat", null, tab("close-right"), { disabled: !data.right }),
@@ -579,12 +589,58 @@ function drawTabCard(data) {
   );
 }
 
+// Right click on a group's chip: name, colour, new tab, ungroup, close.
+const GROUP_COLORS = { blue: "Mavi", violet: "Mor", pink: "Pembe", red: "Kırmızı", orange: "Turuncu", yellow: "Sarı", green: "Yeşil", cyan: "Turkuaz", grey: "Gri" };
+function drawGroupMenu(data) {
+  const group = (action, extra = {}) => run("group_command", { group: data.id, action, ...extra });
+  const name = el("input", { class: "group-name", type: "text", placeholder: "Grubun adı", "aria-label": "Grubun adı", spellcheck: "false" });
+  name.value = data.name || "";
+  let timer = null;
+  name.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => group("rename", { name: name.value }), 250);
+  });
+  name.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      group("rename", { name: name.value });
+      close();
+    }
+  });
+  const colors = el(
+    "div",
+    { class: "group-colors", role: "radiogroup", "aria-label": "Renk" },
+    Object.entries(GROUP_COLORS).map(([id, label]) => {
+      const button = el("button", { class: "group-color", "data-color": id, role: "radio", "aria-label": label, title: label });
+      button.setAttribute("aria-checked", String(id === data.color));
+      button.addEventListener("click", () => {
+        group("color", { color: id });
+        colors.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b === button)));
+      });
+      return button;
+    }),
+  );
+  root.className = "popup compact";
+  root.replaceChildren(
+    el("div", { class: "group-head" }, [name]),
+    colors,
+    el("hr"),
+    item("plus", "Bu gruba yeni sekme", null, () => group("new-tab")),
+    item("tab", "Grubu çöz", null, () => group("ungroup")),
+    item("close", "Grubu kapat", null, () => group("close")),
+  );
+  setTimeout(() => {
+    name.focus();
+    name.select();
+  }, 0);
+}
+
 function drawToast(data) {
   root.className = "popup toast";
   root.replaceChildren(el("span", { class: "label", text: data.text }));
 }
 
 const DRAW = {
+  "group-menu": drawGroupMenu,
   toast: drawToast,
   find: drawFind,
   palette: drawPalette,

@@ -153,3 +153,14 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Tab group colours (Chrome's set, tuned for the ink). */
+[data-color="blue"] { --g: #6d95ff; }
+[data-color="violet"] { --g: #a184f7; }
+[data-color="pink"] { --g: #ff7aa8; }
+[data-color="red"] { --g: #ff6b6b; }
+[data-color="orange"] { --g: #ff9f43; }
+[data-color="yellow"] { --g: #f5c842; }
+[data-color="green"] { --g: #4cd07d; }
+[data-color="cyan"] { --g: #3bc9db; }
+[data-color="grey"] { --g: #a3a7b5; }

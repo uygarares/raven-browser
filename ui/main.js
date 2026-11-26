@@ -281,11 +281,13 @@ function openTabMenu(tab, event) {
   const index = state.tabs.findIndex((item) => item.id === tab.id);
   const others = state.tabs.some((item) => item.id !== tab.id && !item.pinned);
   const right = state.tabs.slice(index + 1).some((item) => !item.pinned);
-  const height = 9 * 32 + 4 * 11 + 14;
+  const groups = (state.groups || []).filter((group) => group.id !== tab.group);
+  const groupRows = tab.pinned ? 0 : 1 + groups.length + (tab.group != null ? 1 : 0);
+  const height = (9 + groupRows) * 32 + (tab.pinned ? 4 : 5) * 11 + 14;
   openPopup(
     "tab-menu",
-    { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right },
-    { x: event.clientX, y: event.clientY, width: 300, height },
+    { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right, group: tab.group ?? null, groups },
+    { x: event.clientX, y: Math.min(event.clientY, window.innerHeight - height - 8), width: 300, height },
   );
 }
 
@@ -415,6 +417,36 @@ function updateTab(el, tab) {
   }
 }
 
+// Tab groups: a coloured chip with the group's name before its tabs. Click
+// folds or unfolds it; right click renames, recolours, ungroups or closes it.
+const groupEls = new Map();
+function groupChip(group) {
+  let chip = groupEls.get(group.id);
+  if (!chip) {
+    chip = document.createElement("button");
+    chip.className = "group-chip";
+    chip.addEventListener("click", () => {
+      const now = (state.groups || []).find((g) => g.id === group.id);
+      if (now) run("group_command", { group: group.id, action: now.collapsed ? "unfold" : "fold" });
+    });
+    chip.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const now = (state.groups || []).find((g) => g.id === group.id);
+      if (now) openPopup("group-menu", now, { x: event.clientX, y: event.clientY, width: 288, height: 236 });
+    });
+    groupEls.set(group.id, chip);
+  }
+  chip.dataset.color = group.color;
+  chip.textContent = group.name;
+  chip.classList.toggle("collapsed", group.collapsed);
+  chip.classList.toggle("unnamed", !group.name);
+  const count = state.tabs.filter((tab) => tab.group === group.id).length;
+  chip.title = `${group.name || "Grup"} · ${count} sekme. Tıkla: ${group.collapsed ? "aç" : "katla"}. Sağ tık: düzenle`;
+  if (group.collapsed) chip.dataset.count = String(count);
+  else delete chip.dataset.count;
+  return chip;
+}
+
 function render() {
   // Moving elements would drop the tab being dragged.
   if (drag?.moved) {
@@ -423,7 +455,10 @@ function render() {
   }
   renderLater = false;
   const seen = new Set();
-  state.tabs.forEach((tab, index) => {
+  const groups = new Map((state.groups || []).map((group) => [group.id, group]));
+  const nodes = [];
+  let previous = null;
+  for (const tab of state.tabs) {
     let el = tabEls.get(tab.id);
     if (!el) {
       el = makeTab(tab);
@@ -431,12 +466,28 @@ function render() {
     }
     seen.add(tab.id);
     updateTab(el, tab);
-    if (tabsEl.children[index] !== el) tabsEl.insertBefore(el, tabsEl.children[index] || null);
+    const group = tab.group != null ? groups.get(tab.group) : null;
+    // A group's name chip goes before its first tab.
+    if (group && tab.group !== previous) nodes.push(groupChip(group));
+    el.dataset.color = group ? group.color : "";
+    el.hidden = Boolean(group?.collapsed);
+    nodes.push(el);
+    previous = tab.group ?? null;
+  }
+  nodes.forEach((node, index) => {
+    if (tabsEl.children[index] !== node) tabsEl.insertBefore(node, tabsEl.children[index] || null);
   });
+  while (tabsEl.children.length > nodes.length) tabsEl.lastElementChild.remove();
   for (const [id, el] of tabEls) {
     if (!seen.has(id)) {
       el.remove();
       tabEls.delete(id);
+    }
+  }
+  for (const [id, chip] of groupEls) {
+    if (!groups.has(id)) {
+      chip.remove();
+      groupEls.delete(id);
     }
   }
 
