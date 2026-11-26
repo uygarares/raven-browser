@@ -11,7 +11,7 @@
   <div class="tab-row" data-tauri-drag-region>
     <img class="logo" src="logo.png" alt="Raven" data-tauri-drag-region>
     <div id="tabs" class="tabs" role="tablist" aria-label="Sekmeler"></div>
-    <button id="new-tab" class="icon-button new-tab" aria-label="Yeni sekme (Ctrl + T)" title="Yeni sekme (Ctrl + T)">
+    <button id="new-tab" class="icon-button new-tab" aria-label="Yeni sekme (Ctrl + T). Sağ tık: gizli sekme" title="Yeni sekme (Ctrl + T)&#10;Sağ tık: gizli sekme (Ctrl + Shift + N)">
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
     </button>
     <div class="drag-space" data-tauri-drag-region></div>
@@ -44,6 +44,7 @@
       <label for="address" class="hidden">Adres</label>
       <input id="address" type="text" placeholder="Ara ya da adres yaz" autocomplete="off" spellcheck="false">
       <span id="loading" class="spinner" aria-hidden="true"></span>
+      <button id="zoom" type="button" class="zoom-level" title="Yakınlaştırma. Sıfırlamak için bas (Ctrl + 0)" hidden>100%</button>
       <button id="star" type="button" class="icon-button star" aria-label="Yer imlerine ekle (Ctrl + D)" title="Yer imlerine ekle (Ctrl + D)" aria-pressed="false">
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg>
       </button>

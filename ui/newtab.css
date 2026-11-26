@@ -216,3 +216,14 @@ kbd {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+.private-note {
+  display: none;
+  margin: 16px 0 0;
+  max-width: 480px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-2);
+}
+body.private .private-note { display: block; }

@@ -9,6 +9,8 @@ const address = document.getElementById("address");
 const loading = document.getElementById("loading");
 
 let state = { tabs: [], active: null };
+const zoomButton = document.getElementById("zoom");
+zoomButton.addEventListener("click", () => run("run_action", { action: "zoom-reset" }));
 
 function run(command, args) {
   return invoke(command, args).catch((error) => console.error(command, error));
@@ -33,10 +35,18 @@ address.addEventListener("focus", () => address.select());
 
 // Tabs
 document.getElementById("new-tab").addEventListener("click", () => run("run_action", { action: "new-tab" }));
+// Right click on + opens a private tab (also Ctrl + Shift + N).
+document.getElementById("new-tab").addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  run("run_action", { action: "new-private-tab" });
+});
 
 function closeTab(id) {
   run("close_tab", { id });
 }
+
+const PRIVATE_ICON =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h18"/><path d="M5 10l2-6h10l2 6"/><circle cx="8" cy="16" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 16h2"/></svg>';
 
 const SEARCH_ICON =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
@@ -51,11 +61,14 @@ function render() {
       el.classList.toggle("active", isActive);
       el.classList.toggle("loading", tab.loading && !isNewTabPage);
       el.classList.toggle("new-tab-page", isNewTabPage);
+      el.classList.toggle("private", tab.private);
       el.setAttribute("aria-selected", String(isActive));
-      el.title = tab.title;
+      el.title = tab.private ? `${tab.title} (gizli sekme)` : tab.title;
       el.querySelector(".tab-title").textContent = tab.title;
       const icon = el.querySelector(".tab-icon");
-      if (isNewTabPage) {
+      if (tab.private) {
+        icon.innerHTML = PRIVATE_ICON;
+      } else if (isNewTabPage) {
         icon.innerHTML = SEARCH_ICON;
       } else if (!tab.loading) {
         RavenIcons.fill(icon, tab.url, tab.title);
@@ -80,6 +93,9 @@ function render() {
       address.value = active.url;
     }
     loading.classList.toggle("on", active.loading && active.url !== "");
+    const zoomed = active.url !== "" && Math.abs(active.zoom - 1) > 0.001;
+    zoomButton.hidden = !zoomed;
+    zoomButton.textContent = `${Math.round(active.zoom * 100)}%`;
   }
   renderStar();
 }
@@ -544,6 +560,10 @@ function actionFor(event) {
   const key = event.key.toLowerCase();
   const shift = event.shiftKey;
   if (key === "t") return shift ? "reopen-tab" : "new-tab";
+  if (key === "n" && shift) return "new-private-tab";
+  if (key === "+" || key === "=") return "zoom-in";
+  if (key === "-" || key === "_") return "zoom-out";
+  if (key === "0" && !shift) return "zoom-reset";
   if (shift) {
     if (key === "tab") return "previous-tab";
     if (key === "b") return "toggle-bookmarks-bar";

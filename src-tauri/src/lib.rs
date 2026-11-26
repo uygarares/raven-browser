@@ -15,6 +15,7 @@ mod settings;
 mod shortcuts;
 mod storage;
 mod tabs;
+mod zoom;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -143,6 +144,7 @@ pub fn run() {
             app.manage(bookmarks::load(handle));
             app.manage(history::load(handle));
             app.manage(downloads::load(handle));
+            app.manage(zoom::load(handle));
             history::start_saving(handle);
             let last_session = session::load(handle);
             bookmarks::refresh_bar(handle);

@@ -13,7 +13,7 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webview, WebviewUrl,
 };
 
-use crate::{downloads, history, session, settings, toolbar_height};
+use crate::{downloads, history, session, settings, toolbar_height, zoom};
 use tauri::webview::DownloadEvent;
 
 pub const HOME_URL: &str = "https://www.google.com";
@@ -32,6 +32,11 @@ pub struct TabInfo {
     loading: bool,
     /// No webview yet: the page loads when the tab is opened.
     asleep: bool,
+    /// Private tab: not saved in history or the session; its cookies and
+    /// site data are deleted when the last private tab closes.
+    private: bool,
+    /// Page zoom, 1.0 = 100%.
+    zoom: f64,
 }
 
 #[derive(Default)]
@@ -80,8 +85,20 @@ const LINK_SCRIPT: &str = r#"(() => {
     const url = linkOf(event);
     if (url) openInBackground(event, url);
   }, true);
+  // Ctrl + mouse wheel zooms the page, like other browsers.
+  let lastZoom = 0;
+  addEventListener("wheel", (event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    const now = Date.now();
+    if (now - lastZoom < 120) return;
+    lastZoom = now;
+    location.href = "raven-action:" + (event.deltaY < 0 ? "zoom-in" : "zoom-out");
+  }, { capture: true, passive: false });
 })();"#;
 const BACKGROUND_PREFIX: &str = "raven-background:";
+/// The only actions a website's page may ask for (Ctrl + mouse wheel).
+const ACTION_PREFIX: &str = "raven-action:";
 
 const MAX_CLOSED: usize = 25;
 
@@ -147,11 +164,17 @@ fn publish(app: &AppHandle) {
         .active
         .and_then(|id| state.tabs.iter().position(|tab| tab.id == id))
         .unwrap_or(0);
+    // Private tabs are never saved.
+    let saved: Vec<&TabInfo> = state.tabs.iter().filter(|tab| !tab.private).collect();
+    let active = state
+        .tabs
+        .get(active)
+        .and_then(|tab| saved.iter().position(|saved| saved.id == tab.id))
+        .unwrap_or(0);
     session::save(
         app,
         session::Session {
-            tabs: state
-                .tabs
+            tabs: saved
                 .iter()
                 .map(|tab| session::SavedTab { url: tab.url.clone(), title: tab.title.clone() })
                 .collect(),
@@ -199,7 +222,7 @@ pub fn to_url(input: &str, search_url: &str) -> Result<Url, String> {
 }
 
 /// Adds a tab to the list, without a webview yet.
-fn add_tab(app: &AppHandle, url: &str, title: &str, place: Place) -> u32 {
+fn add_tab(app: &AppHandle, url: &str, title: &str, place: Place, private: bool) -> u32 {
     let new_tab = is_new_tab_url(url);
     with_tabs(app, |list| {
         list.next_id += 1;
@@ -231,6 +254,8 @@ fn add_tab(app: &AppHandle, url: &str, title: &str, place: Place) -> u32 {
                 url: if new_tab { String::new() } else { url.to_string() },
                 loading: false,
                 asleep: true,
+                private,
+                zoom: 1.0,
             },
         );
         id
@@ -239,16 +264,16 @@ fn add_tab(app: &AppHandle, url: &str, title: &str, place: Place) -> u32 {
 
 /// Adds a restored tab that loads only when it is opened.
 pub fn add_sleeping_tab(app: &AppHandle, url: &str, title: &str) -> u32 {
-    add_tab(app, url, title, Place::End)
+    add_tab(app, url, title, Place::End, false)
 }
 
 /// Creates the webview of a tab and loads its page.
 fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
-    let url = with_tabs(app, |list| {
+    let (url, private) = with_tabs(app, |list| {
         let info = list.info.get_mut(&id)?;
         info.asleep = false;
         info.loading = true;
-        Some(info.url.clone())
+        Some((info.url.clone(), info.private))
     })
     .ok_or(tauri::Error::WebviewNotFound)?;
 
@@ -270,9 +295,23 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     let on_download = app.clone();
     let builder = WebviewBuilder::new(label(id), target)
         .background_color(background_for(&url))
+        // Private tabs use WebView2's InPrivate mode.
+        .incognito(private)
         .initialization_script(LINK_SCRIPT)
         // Middle click or Ctrl+click on a link: open it next to this tab, in the background.
         .on_navigation(move |url| {
+            if let Some(action) = url.as_str().strip_prefix(ACTION_PREFIX) {
+                let direction = match action {
+                    "zoom-in" => 1,
+                    "zoom-out" => -1,
+                    _ => return false,
+                };
+                let app = on_link.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = zoom_tab(&app, id, direction);
+                });
+                return false;
+            }
             let Some(link) = url.as_str().strip_prefix(BACKGROUND_PREFIX) else {
                 return true;
             };
@@ -280,7 +319,7 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                 let app = on_link.clone();
                 let link = link.to_string();
                 tauri::async_runtime::spawn(async move {
-                    let _ = create_tab_at(&app, &link, false, Place::NextTo(id));
+                    let _ = create_tab_at(&app, &link, false, Place::NextTo(id), private);
                 });
             }
             false
@@ -288,13 +327,20 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
         .on_page_load(move |webview, payload| {
             let loading = matches!(payload.event(), PageLoadEvent::Started);
             let mut url = payload.url().to_string();
+            let mut level = 1.0;
             if loading {
                 let _ = webview.set_background_color(Some(background_for(&url)));
+                // Each website keeps its own zoom.
+                level = zoom::level_for(&on_load, &url);
+                let _ = webview.set_zoom(level);
             }
             if is_new_tab_url(&url) {
                 // The address bar stays empty on the new tab page, like other browsers.
                 url = String::new();
-            } else if !loading {
+                if !loading && private {
+                    let _ = webview.eval("document.body.classList.add('private')");
+                }
+            } else if !loading && !private {
                 // The title usually arrives before the page finishes loading.
                 let title = with_tabs(&on_load, |list| {
                     list.info.get(&id).map(|tab| tab.title.clone()).unwrap_or_default()
@@ -304,14 +350,19 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
             update_tab(&on_load, id, |tab| {
                 tab.url = url;
                 tab.loading = loading;
+                if loading {
+                    tab.zoom = level;
+                }
             });
         })
         .on_document_title_changed(move |webview, title| {
             if title.trim().is_empty() {
                 return;
             }
-            if let Ok(url) = webview.url() {
-                history::set_title(&on_title, url.as_str(), &title);
+            if !private {
+                if let Ok(url) = webview.url() {
+                    history::set_title(&on_title, url.as_str(), &title);
+                }
             }
             update_tab(&on_title, id, |tab| tab.title = title);
         })
@@ -331,7 +382,7 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
         .on_new_window(move |url, _features| {
             let app = on_popup.clone();
             tauri::async_runtime::spawn(async move {
-                let _ = create_tab_at(&app, url.as_str(), true, Place::NextTo(id));
+                let _ = create_tab_at(&app, url.as_str(), true, Place::NextTo(id), private);
             });
             NewWindowResponse::Deny
         });
@@ -351,12 +402,18 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
 
 /// Opens a new tab. Must not be called from a webview event handler (use a spawned task).
 pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u32> {
-    create_tab_at(app, url, activate, Place::End)
+    create_tab_at(app, url, activate, Place::End, false)
 }
 
 /// Opens a new tab at a given place. Must not be called from a webview event handler.
-pub fn create_tab_at(app: &AppHandle, url: &str, activate: bool, place: Place) -> tauri::Result<u32> {
-    let id = add_tab(app, url, "", place);
+pub fn create_tab_at(
+    app: &AppHandle,
+    url: &str,
+    activate: bool,
+    place: Place,
+    private: bool,
+) -> tauri::Result<u32> {
+    let id = add_tab(app, url, "", place, private);
     if activate {
         show_only(app, id);
     } else {
@@ -443,6 +500,48 @@ pub fn open_tab(app: &AppHandle, url: &str) -> Result<u32, String> {
     create_tab(app, url, true).map_err(|e| e.to_string())
 }
 
+/// Opens a private tab with the new tab page (Ctrl+Shift+N).
+pub fn open_private_tab(app: &AppHandle) -> Result<u32, String> {
+    create_tab_at(app, NEW_TAB, true, Place::End, true).map_err(|e| e.to_string())
+}
+
+/// Zooms a tab in (+1), out (-1) or back to 100% (0). The new level is remembered
+/// for the website and applied to its other open tabs too, like Chrome.
+pub fn zoom_tab(app: &AppHandle, id: u32, direction: i32) -> Result<(), String> {
+    let (url, current) = with_tabs(app, |list| {
+        let info = list.info.get(&id)?;
+        Some((info.url.clone(), info.zoom))
+    })
+    .ok_or("Tab not found")?;
+    let Some(site) = zoom::site_of(&url) else { return Ok(()) };
+    let level = zoom::step(current, direction);
+    zoom::remember(app, &url, level);
+    let same_site: Vec<u32> = with_tabs(app, |list| {
+        list.info
+            .values_mut()
+            .filter(|tab| zoom::site_of(&tab.url).as_deref() == Some(site.as_str()))
+            .map(|tab| {
+                tab.zoom = level;
+                tab.id
+            })
+            .collect()
+    });
+    for tab in same_site {
+        if let Some(webview) = app.get_webview(&label(tab)) {
+            let _ = webview.set_zoom(level);
+        }
+    }
+    publish(app);
+    Ok(())
+}
+
+pub fn zoom_active(app: &AppHandle, direction: i32) -> Result<(), String> {
+    match with_tabs(app, |list| list.active) {
+        Some(id) => zoom_tab(app, id, direction),
+        None => Ok(()),
+    }
+}
+
 /// Loads an address in the active tab.
 pub fn open_here(app: &AppHandle, url: &str) -> Result<(), String> {
     let url: Url = url.parse().map_err(|e| format!("{e}"))?;
@@ -454,7 +553,7 @@ pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
     let next = with_tabs(app, |list| {
         let index = list.order.iter().position(|t| *t == id)?;
         list.order.remove(index);
-        if let Some(info) = list.info.remove(&id) {
+        if let Some(info) = list.info.remove(&id).filter(|info| !info.private) {
             list.closed.push(info.url);
             if list.closed.len() > MAX_CLOSED {
                 list.closed.remove(0);

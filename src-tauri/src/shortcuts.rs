@@ -23,6 +23,10 @@ pub enum Action {
     LastTab,
     OpenHistory,
     OpenDownloads,
+    NewPrivateTab,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
     ToggleBookmark,
     ToggleBookmarksBar,
 }
@@ -47,6 +51,10 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
         (0x39, false) => Action::LastTab,     // 9
         (0x48, false) => Action::OpenHistory, // H
         (0x4A, false) => Action::OpenDownloads, // J
+        (0x4E, true) => Action::NewPrivateTab, // Shift+N
+        (0xBB, _) | (0x6B, _) => Action::ZoomIn, // = + and numpad +
+        (0xBD, false) | (0x6D, false) => Action::ZoomOut, // - and numpad -
+        (0x30, false) | (0x60, false) => Action::ZoomReset, // 0 and numpad 0
         (0x44, false) => Action::ToggleBookmark, // D
         (0x42, true) => Action::ToggleBookmarksBar, // Shift+B
         _ => return None,
@@ -92,6 +100,10 @@ pub fn perform(app: &AppHandle, action: Action) {
                 let _ = app.emit("open-downloads", ());
                 Ok(())
             }
+            Action::NewPrivateTab => tabs::open_private_tab(&app).map(|_| focus_address(&app)),
+            Action::ZoomIn => tabs::zoom_active(&app, 1),
+            Action::ZoomOut => tabs::zoom_active(&app, -1),
+            Action::ZoomReset => tabs::zoom_active(&app, 0),
             Action::ToggleBookmark => crate::bookmarks::toggle_active(&app).map(|_| ()),
             Action::ToggleBookmarksBar => crate::bookmarks::toggle_bar(&app),
         };
@@ -169,6 +181,11 @@ mod tests {
         assert_eq!(from_key(true, false, 0x38), Some(Action::GoToTab(7)));
         assert_eq!(from_key(true, false, 0x39), Some(Action::LastTab));
         assert_eq!(from_key(true, false, 0x48), Some(Action::OpenHistory));
+        assert_eq!(from_key(true, true, 0x4E), Some(Action::NewPrivateTab));
+        assert_eq!(from_key(true, false, 0xBB), Some(Action::ZoomIn));
+        assert_eq!(from_key(true, true, 0xBB), Some(Action::ZoomIn)); // Ctrl + Shift + = is Ctrl + +
+        assert_eq!(from_key(true, false, 0xBD), Some(Action::ZoomOut));
+        assert_eq!(from_key(true, false, 0x30), Some(Action::ZoomReset));
         assert_eq!(from_key(true, false, 0x44), Some(Action::ToggleBookmark));
         assert_eq!(from_key(true, true, 0x42), Some(Action::ToggleBookmarksBar));
     }
