@@ -1,18 +1,21 @@
-//! Keyboard shortcuts, the same as in Chrome and Edge.
+//! Keyboard shortcuts and menu actions, the same as in Chrome and Edge.
 //!
-//! They work wherever the focus is: in Raven's toolbar (ui/main.js sends them
-//! with `run_action`) and inside websites (on Windows, `listen_in_tab` catches
-//! them before the website sees them).
+//! They work wherever the focus is: in Raven's toolbar and menus (ui/*.js send
+//! them with `run_action`) and inside websites (on Windows, `listen_in_tab`
+//! catches them before the website sees them). Each action applies to the
+//! window it came from.
 
-use serde::Deserialize;
-use tauri::{AppHandle, Emitter, Manager};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager, Webview};
 
-use crate::tabs;
+use crate::{bookmarks, tabs, windows};
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Action {
     NewTab,
+    NewWindow,
+    NewPrivateWindow,
     CloseTab,
     ReopenTab,
     FocusAddress,
@@ -24,7 +27,6 @@ pub enum Action {
     OpenHistory,
     OpenDownloads,
     OpenSettings,
-    NewPrivateTab,
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -32,10 +34,10 @@ pub enum Action {
     ToggleBookmarksBar,
 }
 
-/// Matches a key press to an action, like Chrome: Ctrl+T, Ctrl+W, Ctrl+Shift+T,
-/// Ctrl+L, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+PageDown, Ctrl+PageUp, Ctrl+1..8, Ctrl+9,
-/// Ctrl+H (history), Ctrl+D (bookmark), Ctrl+Shift+B (bookmarks bar).
-/// `key` is the Windows virtual key code.
+/// Matches a key press to an action, like Chrome: Ctrl+T, Ctrl+N, Ctrl+Shift+N,
+/// Ctrl+W, Ctrl+Shift+T, Ctrl+L, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+PageDown,
+/// Ctrl+PageUp, Ctrl+1..8, Ctrl+9, Ctrl+H, Ctrl+J, Ctrl+D, Ctrl+Shift+B,
+/// Ctrl + plus / minus / 0. `key` is the Windows virtual key code.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
     if !ctrl {
@@ -44,6 +46,8 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
     let action = match (key, shift) {
         (0x54, false) => Action::NewTab,      // T
         (0x54, true) => Action::ReopenTab,    // Shift+T
+        (0x4E, false) => Action::NewWindow,   // N
+        (0x4E, true) => Action::NewPrivateWindow, // Shift+N
         (0x57, false) => Action::CloseTab,    // W
         (0x4C, false) => Action::FocusAddress, // L
         (0x09, false) | (0x22, false) => Action::NextTab, // Tab, PageDown
@@ -52,7 +56,6 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
         (0x39, false) => Action::LastTab,     // 9
         (0x48, false) => Action::OpenHistory, // H
         (0x4A, false) => Action::OpenDownloads, // J
-        (0x4E, true) => Action::NewPrivateTab, // Shift+N
         (0xBB, _) | (0x6B, _) => Action::ZoomIn, // = + and numpad +
         (0xBD, false) | (0x6D, false) => Action::ZoomOut, // - and numpad -
         (0x30, false) | (0x60, false) => Action::ZoomReset, // 0 and numpad 0
@@ -63,74 +66,77 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
     Some(action)
 }
 
-/// Puts the cursor in the address bar and selects its text.
-fn focus_address(app: &AppHandle) {
-    if let Some(toolbar) = app.get_webview("ui") {
-        let _ = toolbar.set_focus();
-    }
-    let _ = app.emit("focus-address", ());
+/// Something a window's toolbar should do, sent as an event with the window's name.
+#[derive(Clone, Serialize)]
+struct ToolbarRequest<'a> {
+    window: &'a str,
 }
 
-/// Runs an action. Safe to call from any thread, including webview event handlers.
-pub fn perform(app: &AppHandle, action: Action) {
+/// Gives the keyboard to a window's toolbar and asks it to do something
+/// ("focus-address", "open-history", "open-downloads", "open-settings").
+fn tell_toolbar(app: &AppHandle, window: &str, event: &str) {
+    if let Some(toolbar) = app.get_webview(&windows::ui_label(window)) {
+        let _ = toolbar.set_focus();
+    }
+    let _ = app.emit(event, ToolbarRequest { window });
+}
+
+/// Runs an action for a window. Safe to call from any thread, including
+/// webview event handlers.
+pub fn perform(app: &AppHandle, window: String, action: Action) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        let window = window.as_str();
         let result = match action {
-            Action::NewTab => tabs::open_tab(&app, tabs::NEW_TAB).map(|_| focus_address(&app)),
-            Action::CloseTab => tabs::close_active(&app),
-            Action::ReopenTab => tabs::reopen_closed(&app),
+            Action::NewTab => {
+                tabs::open_tab(&app, window, tabs::NEW_TAB).map(|_| tell_toolbar(&app, window, "focus-address"))
+            }
+            Action::NewWindow => windows::new_window(&app, false).map(|_| ()),
+            Action::NewPrivateWindow => windows::new_window(&app, true).map(|_| ()),
+            Action::CloseTab => tabs::close_active(&app, window),
+            Action::ReopenTab => tabs::reopen_closed(&app, window),
             Action::FocusAddress => {
-                focus_address(&app);
+                tell_toolbar(&app, window, "focus-address");
                 Ok(())
             }
-            Action::NextTab => tabs::switch_relative(&app, 1),
-            Action::PreviousTab => tabs::switch_relative(&app, -1),
-            Action::GoToTab(index) => tabs::switch_to_index(&app, index),
-            Action::LastTab => tabs::switch_to_last(&app),
+            Action::NextTab => tabs::switch_relative(&app, window, 1),
+            Action::PreviousTab => tabs::switch_relative(&app, window, -1),
+            Action::GoToTab(index) => tabs::switch_to_index(&app, window, index),
+            Action::LastTab => tabs::switch_to_last(&app, window),
             Action::OpenHistory => {
-                if let Some(toolbar) = app.get_webview("ui") {
-                    let _ = toolbar.set_focus();
-                }
-                let _ = app.emit("open-history", ());
-                Ok(())
-            }
-            Action::OpenSettings => {
-                if let Some(toolbar) = app.get_webview("ui") {
-                    let _ = toolbar.set_focus();
-                }
-                let _ = app.emit("open-settings", ());
+                tell_toolbar(&app, window, "open-history");
                 Ok(())
             }
             Action::OpenDownloads => {
-                if let Some(toolbar) = app.get_webview("ui") {
-                    let _ = toolbar.set_focus();
-                }
-                let _ = app.emit("open-downloads", ());
+                tell_toolbar(&app, window, "open-downloads");
                 Ok(())
             }
-            Action::NewPrivateTab => tabs::open_private_tab(&app).map(|_| focus_address(&app)),
-            Action::ZoomIn => tabs::zoom_active(&app, 1),
-            Action::ZoomOut => tabs::zoom_active(&app, -1),
-            Action::ZoomReset => tabs::zoom_active(&app, 0),
-            Action::ToggleBookmark => crate::bookmarks::toggle_active(&app).map(|_| ()),
-            Action::ToggleBookmarksBar => crate::bookmarks::toggle_bar(&app),
+            Action::OpenSettings => {
+                tell_toolbar(&app, window, "open-settings");
+                Ok(())
+            }
+            Action::ZoomIn => tabs::zoom_active(&app, window, 1),
+            Action::ZoomOut => tabs::zoom_active(&app, window, -1),
+            Action::ZoomReset => tabs::zoom_active(&app, window, 0),
+            Action::ToggleBookmark => bookmarks::toggle_active(&app, window).map(|_| ()),
+            Action::ToggleBookmarksBar => bookmarks::toggle_bar(&app),
         };
         if let Err(error) = result {
-            eprintln!("Shortcut {action:?} failed: {error}");
+            eprintln!("Action {action:?} failed: {error}");
         }
     });
 }
 
 #[tauri::command]
-pub async fn run_action(app: AppHandle, action: Action) {
-    perform(&app, action);
+pub async fn run_action(app: AppHandle, webview: Webview, action: Action) {
+    perform(&app, windows::window_of(&webview), action);
 }
 
 /// Catches Raven's shortcuts inside a website tab, before the website gets them.
 #[cfg(windows)]
-pub fn listen_in_tab(app: &AppHandle, webview: &tauri::Webview) {
+pub fn listen_in_tab(app: &AppHandle, webview: &tauri::Webview, id: u32) {
     use webview2_com::{AcceleratorKeyPressedEventHandler, Microsoft::Web::WebView2::Win32::*};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT};
+    use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT};
 
     let app = app.clone();
     let _ = webview.with_webview(move |platform| unsafe {
@@ -159,8 +165,10 @@ pub fn listen_in_tab(app: &AppHandle, webview: &tauri::Webview) {
             let shift = GetKeyState(VK_SHIFT.0 as i32) < 0;
 
             if let Some(action) = from_key(ctrl, shift, key) {
-                args.SetHandled(true)?;
-                perform(&app, action);
+                if let Some(window) = tabs::window_of_tab(&app, id) {
+                    args.SetHandled(true)?;
+                    perform(&app, window, action);
+                }
             }
             Ok(())
         }));
@@ -171,7 +179,7 @@ pub fn listen_in_tab(app: &AppHandle, webview: &tauri::Webview) {
 
 /// Other systems: shortcuts inside websites are not caught yet.
 #[cfg(not(windows))]
-pub fn listen_in_tab(_app: &AppHandle, _webview: &tauri::Webview) {}
+pub fn listen_in_tab(_app: &AppHandle, _webview: &tauri::Webview, _id: u32) {}
 
 #[cfg(test)]
 mod tests {
@@ -181,6 +189,8 @@ mod tests {
     fn chrome_shortcuts() {
         assert_eq!(from_key(true, false, 0x54), Some(Action::NewTab));
         assert_eq!(from_key(true, true, 0x54), Some(Action::ReopenTab));
+        assert_eq!(from_key(true, false, 0x4E), Some(Action::NewWindow));
+        assert_eq!(from_key(true, true, 0x4E), Some(Action::NewPrivateWindow));
         assert_eq!(from_key(true, false, 0x57), Some(Action::CloseTab));
         assert_eq!(from_key(true, false, 0x4C), Some(Action::FocusAddress));
         assert_eq!(from_key(true, false, 0x09), Some(Action::NextTab));
@@ -189,7 +199,6 @@ mod tests {
         assert_eq!(from_key(true, false, 0x38), Some(Action::GoToTab(7)));
         assert_eq!(from_key(true, false, 0x39), Some(Action::LastTab));
         assert_eq!(from_key(true, false, 0x48), Some(Action::OpenHistory));
-        assert_eq!(from_key(true, true, 0x4E), Some(Action::NewPrivateTab));
         assert_eq!(from_key(true, false, 0xBB), Some(Action::ZoomIn));
         assert_eq!(from_key(true, true, 0xBB), Some(Action::ZoomIn)); // Ctrl + Shift + = is Ctrl + +
         assert_eq!(from_key(true, false, 0xBD), Some(Action::ZoomOut));

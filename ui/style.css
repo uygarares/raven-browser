@@ -1,7 +1,7 @@
 @import url("theme.css");
 
 :root {
-  /* Must match TOOLBAR_HEIGHT in src-tauri/src/lib.rs (tab row + nav row). */
+  /* Must match TOOLBAR_BASE in src-tauri/src/windows.rs (tab row + nav row). */
   --toolbar-height: 84px;
   --tab-row-height: 40px;
   --nav-row-height: 44px;
@@ -171,7 +171,7 @@ body.with-bookmarks-bar .nav-row { border-bottom: 0; }
   min-width: 0;
   border: 0;
   outline: none;
-  background: var(--tab-row);
+  background: transparent;
   color: var(--text);
   font: 400 13px var(--font);
   user-select: text;
@@ -475,3 +475,58 @@ h2 + .setting { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 .zoom-level[hidden] { display: none; }
 
 [hidden] { display: none !important; }
+
+/* Pinned tabs: just the site icon, at the left. */
+.tab.pinned { flex: none; width: 44px; min-width: 44px; padding: 0; justify-content: center; gap: 2px; }
+.tab.pinned .tab-title, .tab.pinned .tab-close { display: none; }
+.tab.pinned:has(.tab-audio:not([hidden])) { width: 64px; min-width: 64px; }
+
+/* The speaker on tabs that play sound. Press it to mute the site. */
+.tab-audio { flex: none; width: 22px; height: 22px; border-radius: 6px; margin-right: -4px; }
+.tab-audio:hover { color: var(--text); }
+
+/* Dragging a tab to a new place. */
+.tab.dragged { z-index: 2; background: var(--bar); color: var(--text); box-shadow: 0 0 0 1px var(--hairline); transition: none; }
+body.dragging-tab, body.dragging-tab * { cursor: default !important; }
+
+/* The lock (site info) at the start of the address bar. */
+.site-info {
+  flex: none;
+  height: 24px;
+  min-width: 24px;
+  margin-left: -6px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: 400 12px var(--font);
+  transition: background-color 150ms var(--ease), color 150ms var(--ease);
+}
+.site-info:not(:disabled):hover { background: var(--hover); color: var(--text); }
+.site-info:disabled { color: var(--text-3); }
+.site-info.unsafe { color: #f0a14a; }
+.not-secure { white-space: nowrap; }
+
+/* The zoom % opens the zoom box. */
+.zoom-level { cursor: default; }
+
+/* Private window: a darker purple tab row and a "Gizli" badge. */
+body.private-window { --tab-row: #110c1c; --bar: #191427; --field: #0f0b18; }
+.private-badge {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin: 0 8px 8px 0;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: rgba(160, 127, 224, 0.16);
+  color: #c9b4f2;
+  font: 500 12px var(--font);
+  align-self: flex-end;
+}

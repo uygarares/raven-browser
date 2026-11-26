@@ -131,12 +131,20 @@ pub async fn get_search_engines() -> Vec<Engine> {
 /// Deletes cookies, cache and site data (you get signed out of websites).
 #[tauri::command]
 pub async fn clear_browsing_data(app: AppHandle) -> Result<(), String> {
+    // Any webview of a normal (not private) window shares the same browsing data.
+    let normal = |label: &str| {
+        let window = match label.strip_prefix("tab-") {
+            Some(id) => id.parse().ok().and_then(|id| crate::tabs::window_of_tab(&app, id)),
+            None => label.strip_prefix("ui-").map(String::from),
+        };
+        window.is_some_and(|w| !crate::windows::is_private(&app, &w))
+    };
     let webview = app
         .webviews()
         .into_iter()
-        .find(|(label, _)| crate::tabs::is_tab_label(label))
+        .find(|(label, _)| label.starts_with("tab-") && normal(label))
+        .or_else(|| app.webviews().into_iter().find(|(label, _)| label.starts_with("ui-") && normal(label)))
         .map(|(_, webview)| webview)
-        .or_else(|| app.get_webview("ui"))
         .ok_or("No webview")?;
     webview.clear_all_browsing_data().map_err(|e| e.to_string())
 }

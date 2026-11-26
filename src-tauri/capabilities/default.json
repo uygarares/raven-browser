@@ -1,9 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for Raven's own interface (toolbar and the ⋮ menu). Websites shown in tabs get no access.",
-  "windows": ["main"],
-  "webviews": ["ui", "menu"],
+  "description": "Permissions for Raven's own interface (the toolbar and popup menus of every window). Websites shown in tabs get no access.",
+  "webviews": ["ui-*", "popup-*"],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",

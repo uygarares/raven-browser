@@ -103,6 +103,13 @@ fn matches(entry: &Entry, words: &[String]) -> bool {
     words.iter().all(|word| haystack.contains(word))
 }
 
+/// Runs `f` on all history entries, oldest first.
+pub fn with_entries<T>(app: &AppHandle, f: impl FnOnce(&[Entry]) -> T) -> T {
+    let history = app.state::<History>();
+    let entries = history.entries.lock().unwrap();
+    f(&entries)
+}
+
 /// Newest first. With a query, only entries whose title or address contain every word.
 pub fn search(entries: &[Entry], query: &str, limit: usize) -> Vec<Entry> {
     let words: Vec<String> = query.to_lowercase().split_whitespace().map(String::from).collect();

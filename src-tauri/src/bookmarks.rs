@@ -3,9 +3,9 @@
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, Webview};
 
-use crate::{settings::SettingsState, storage, tabs};
+use crate::{settings::SettingsState, storage, tabs, windows};
 
 const FILE: &str = "bookmarks.json";
 
@@ -41,13 +41,13 @@ fn changed(app: &AppHandle) {
 pub fn refresh_bar(app: &AppHandle) {
     let enabled = app.state::<SettingsState>().0.lock().unwrap().show_bookmarks_bar;
     let any = !app.state::<Bookmarks>().0.lock().unwrap().is_empty();
-    crate::set_bookmarks_bar(app, enabled && any);
+    windows::set_bookmarks_bar(app, enabled && any);
 }
 
-/// Adds the active page to the bookmarks, or removes it if it is already there
-/// (the star in the address bar, Ctrl+D).
-pub fn toggle_active(app: &AppHandle) -> Result<bool, String> {
-    let (url, title) = tabs::active_page(app).ok_or("No open tab")?;
+/// Adds a window's active page to the bookmarks, or removes it if it is already
+/// there (the star in the address bar, Ctrl+D).
+pub fn toggle_active(app: &AppHandle, window: &str) -> Result<bool, String> {
+    let (url, title) = tabs::active_page(app, window).ok_or("No open tab")?;
     if url.is_empty() {
         return Err("The new tab page cannot be bookmarked".into());
     }
@@ -86,8 +86,8 @@ pub async fn get_bookmarks(app: AppHandle) -> Vec<Bookmark> {
 }
 
 #[tauri::command]
-pub async fn toggle_bookmark(app: AppHandle) -> Result<bool, String> {
-    toggle_active(&app)
+pub async fn toggle_bookmark(app: AppHandle, webview: Webview) -> Result<bool, String> {
+    toggle_active(&app, &windows::window_of(&webview))
 }
 
 #[tauri::command]

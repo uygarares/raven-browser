@@ -1,20 +1,39 @@
-// Raven toolbar: tabs, navigation and window buttons.
+// Raven toolbar: tabs, navigation and window buttons. Every window has its own
+// toolbar; events from Raven name the window they are for.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const appWindow = window.__TAURI__.window.getCurrentWindow();
+const WINDOW = appWindow.label;
 
 const tabsEl = document.getElementById("tabs");
 const template = document.getElementById("tab-template");
 const address = document.getElementById("address");
+const addressForm = document.getElementById("address-form");
 const loading = document.getElementById("loading");
+const zoomButton = document.getElementById("zoom");
+const siteButton = document.getElementById("site-info");
 
 let state = { tabs: [], active: null };
-const zoomButton = document.getElementById("zoom");
-zoomButton.addEventListener("click", () => run("run_action", { action: "zoom-reset" }));
 
 function run(command, args) {
   return invoke(command, args).catch((error) => console.error(command, error));
 }
+
+/// Listens to an event from Raven meant for this window.
+function listenHere(name, handler) {
+  listen(name, ({ payload }) => {
+    const target = typeof payload === "string" ? payload : payload?.window;
+    if (target === WINDOW) handler(payload);
+  });
+}
+
+// Private window: tabs open in InPrivate mode and nothing is saved.
+run("get_window_info").then((info) => {
+  if (!info?.private) return;
+  document.body.classList.add("private-window");
+  document.getElementById("private-badge").hidden = false;
+  document.title = "Raven (gizli)";
+});
 
 // Window buttons
 document.getElementById("minimize").addEventListener("click", () => appWindow.minimize());
@@ -26,68 +45,304 @@ document.getElementById("back").addEventListener("click", () => run("go_back"));
 document.getElementById("forward").addEventListener("click", () => run("go_forward"));
 document.getElementById("reload").addEventListener("click", () => run("reload"));
 
-document.getElementById("address-form").addEventListener("submit", (event) => {
+addressForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  closeSuggestions();
   run("navigate", { input: address.value });
   address.blur();
 });
 address.addEventListener("focus", () => address.select());
 
+// Popups: the ⋮ menu, the zoom box, the tab menu, site info and suggestions are
+// drawn by popup.html in a small webview over the page.
+
+let popupKind = null;
+
+function openPopup(kind, data, { x, y, width, height, focus = true }) {
+  popupKind = kind;
+  return run("open_popup_command", { kind, data, x, y, width, height, focus });
+}
+
+function closePopup() {
+  if (popupKind === null) return;
+  popupKind = null;
+  run("close_popup_command");
+}
+
+listenHere("popup-closed", () => {
+  popupKind = null;
+  suggestionsShown = false;
+});
+
+/// A button that opens a popup, and closes it when pressed again. Pressing it
+/// takes the focus from the popup, which closes it first, so remember on
+/// mousedown whether it was open.
+function popupButton(button, kind, open) {
+  let wasOpen = false;
+  button.addEventListener("mousedown", () => (wasOpen = popupKind === kind));
+  button.addEventListener("click", () => {
+    if (wasOpen) {
+      wasOpen = false;
+      closePopup();
+      return;
+    }
+    const rect = button.getBoundingClientRect();
+    open(rect);
+  });
+}
+
+function activeTab() {
+  return state.tabs.find((tab) => tab.id === state.active);
+}
+
+// The ⋮ menu: new tab, new windows, zoom, history, downloads, bookmarks bar, settings.
+const MENU_WIDTH = 328;
+const MENU_HEIGHT = 8 * 36 + 3 * 9 + 14;
+popupButton(document.getElementById("menu-button"), "menu", (rect) => {
+  const tab = activeTab();
+  const page = Boolean(tab && tab.url !== "");
+  openPopup(
+    "menu",
+    { zoom: page ? tab.zoom : 1, page, bar: document.body.classList.contains("with-bookmarks-bar") },
+    { x: rect.right - MENU_WIDTH, y: rect.bottom + 4, width: MENU_WIDTH, height: MENU_HEIGHT },
+  );
+});
+
+// The zoom % in the address bar opens a box with − % + and Sıfırla, like Chrome.
+popupButton(zoomButton, "zoom", (rect) => {
+  const tab = activeTab();
+  const width = 236;
+  openPopup("zoom", { zoom: tab ? tab.zoom : 1 }, { x: rect.right - width + 20, y: rect.bottom + 8, width, height: 52 });
+});
+
+// The lock: is the connection secure, and the site's permissions.
+popupButton(siteButton, "site-info", (rect) => {
+  const tab = activeTab();
+  if (!tab || tab.url === "") return;
+  const web = /^https?:/i.test(tab.url);
+  openPopup("site-info", { url: tab.url }, { x: rect.left - 6, y: rect.bottom + 8, width: 320, height: web ? 352 : 120 });
+});
+
+// Address bar suggestions from history and bookmarks.
+
+let typed = ""; // What the user typed (without the completed part).
+let rows = [];
+let selected = -1; // -1: what is in the address bar.
+let suggestionsShown = false;
+let suggestToken = 0;
+
+function closeSuggestions() {
+  suggestToken += 1;
+  rows = [];
+  selected = -1;
+  if (suggestionsShown) {
+    suggestionsShown = false;
+    closePopup();
+  }
+}
+
+function showSuggestions() {
+  if (rows.length === 0) {
+    closeSuggestions();
+    return;
+  }
+  const rect = addressForm.getBoundingClientRect();
+  suggestionsShown = true;
+  openPopup(
+    "suggestions",
+    { rows, selected },
+    { x: rect.left, y: rect.bottom + 4, width: rect.width, height: rows.length * 36 + 14, focus: false },
+  );
+}
+
+address.addEventListener("input", async (event) => {
+  typed = address.value;
+  selected = -1;
+  const query = typed;
+  const token = ++suggestToken;
+  if (!query.trim()) {
+    closeSuggestions();
+    return;
+  }
+  const result = await run("get_suggestions", { query });
+  if (token !== suggestToken || !result || document.activeElement !== address) return;
+  // Complete the address inline, with the added part selected, unless the
+  // user is deleting.
+  const deleting = (event.inputType || "").startsWith("delete");
+  const atEnd = address.selectionStart === query.length && address.selectionEnd === query.length;
+  if (!deleting && atEnd && result.inline && address.value === query) {
+    address.value = query + result.inline.slice(query.length);
+    address.setSelectionRange(query.length, address.value.length);
+  }
+  rows = [{ kind: "search", text: query }, ...result.items];
+  showSuggestions();
+});
+
+address.addEventListener("keydown", (event) => {
+  if ((event.key === "ArrowDown" || event.key === "ArrowUp") && rows.length > 0) {
+    event.preventDefault();
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    // Cycle through -1 (what was typed), 0 … rows.length - 1.
+    selected = ((selected + 1 + step + rows.length + 1) % (rows.length + 1)) - 1;
+    const row = rows[selected];
+    address.value = !row ? typed : row.kind === "search" ? row.text : row.url;
+    run("popup_update", { data: { selected } });
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (suggestionsShown) {
+      address.value = typed;
+      closeSuggestions();
+    } else {
+      const tab = activeTab();
+      address.value = tab ? tab.url : "";
+      address.blur();
+    }
+  }
+});
+
+address.addEventListener("blur", () => {
+  // Later, so a click on a suggestion is not lost.
+  setTimeout(() => {
+    if (document.activeElement !== address) closeSuggestions();
+  }, 150);
+});
+
 // Tabs
 document.getElementById("new-tab").addEventListener("click", () => run("run_action", { action: "new-tab" }));
-// Right click on + opens a private tab (also Ctrl + Shift + N).
-document.getElementById("new-tab").addEventListener("contextmenu", (event) => {
-  event.preventDefault();
-  run("run_action", { action: "new-private-tab" });
-});
 
 function closeTab(id) {
   run("close_tab", { id });
 }
 
-const PRIVATE_ICON =
-  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h18"/><path d="M5 10l2-6h10l2 6"/><circle cx="8" cy="16" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 16h2"/></svg>';
-
 const SEARCH_ICON =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+const SOUND_ICON =
+  '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
+const MUTED_ICON =
+  '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/></svg>';
 
+// Right click on a tab: the tab menu.
+function openTabMenu(tab, event) {
+  const index = state.tabs.findIndex((item) => item.id === tab.id);
+  const others = state.tabs.some((item) => item.id !== tab.id && !item.pinned);
+  const right = state.tabs.slice(index + 1).some((item) => !item.pinned);
+  const height = 9 * 32 + 4 * 9 + 14;
+  openPopup(
+    "tab-menu",
+    { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right },
+    { x: event.clientX, y: event.clientY, width: 300, height },
+  );
+}
+
+// Dragging tabs to change their order. Pointer events, because WebView2 does
+// not pass HTML drag and drop through while Tauri listens for dropped files.
+let drag = null; // { id, startX, offset, moved }
+let renderLater = false;
+
+function tabElement(id) {
+  return tabsEl.querySelector(`.tab[data-id="${id}"]`);
+}
+
+function startDrag(tab, event) {
+  drag = { id: tab.id, startX: event.clientX, moved: false };
+}
+
+document.addEventListener("mousemove", (event) => {
+  if (!drag) return;
+  const dx = event.clientX - drag.startX;
+  if (!drag.moved && Math.abs(dx) < 6) return;
+  const el = tabElement(drag.id);
+  if (!el) return;
+  if (!drag.moved) {
+    drag.moved = true;
+    document.body.classList.add("dragging-tab");
+    el.classList.add("dragged");
+  }
+  el.style.transform = `translateX(${dx}px)`;
+});
+
+document.addEventListener("mouseup", (event) => {
+  if (!drag) return;
+  const { id, moved } = drag;
+  drag = null;
+  document.body.classList.remove("dragging-tab");
+  if (!moved) return;
+  // The new place: how many other tabs have their middle left of the pointer.
+  const others = [...tabsEl.querySelectorAll(".tab")].filter((el) => el.dataset.id !== String(id));
+  const index = others.filter((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.left + rect.width / 2 < event.clientX;
+  }).length;
+  const el = tabElement(id);
+  if (el) {
+    el.style.transform = "";
+    el.classList.remove("dragged");
+  }
+  run("move_tab_command", { id, index });
+  if (renderLater) render();
+});
 
 function render() {
+  // Drawing again would drop the tab being dragged.
+  if (drag?.moved) {
+    renderLater = true;
+    return;
+  }
+  renderLater = false;
   tabsEl.replaceChildren(
     ...state.tabs.map((tab) => {
       const el = template.content.firstElementChild.cloneNode(true);
       const isActive = tab.id === state.active;
       const isNewTabPage = tab.url === "";
+      el.dataset.id = String(tab.id);
       el.classList.toggle("active", isActive);
       el.classList.toggle("loading", tab.loading && !isNewTabPage);
       el.classList.toggle("new-tab-page", isNewTabPage);
-      el.classList.toggle("private", tab.private);
+      el.classList.toggle("pinned", tab.pinned);
       el.setAttribute("aria-selected", String(isActive));
-      el.title = tab.private ? `${tab.title} (gizli sekme)` : tab.title;
+      el.title = tab.title;
       el.querySelector(".tab-title").textContent = tab.title;
       const icon = el.querySelector(".tab-icon");
-      if (tab.private) {
-        icon.innerHTML = PRIVATE_ICON;
-      } else if (isNewTabPage) {
+      if (isNewTabPage) {
         icon.innerHTML = SEARCH_ICON;
       } else if (!tab.loading) {
         RavenIcons.fill(icon, tab.url, tab.title);
       }
+
+      // Sound: a speaker on tabs that play sound; press it to mute the site.
+      const audio = el.querySelector(".tab-audio");
+      audio.hidden = !(tab.audible || tab.muted);
+      audio.innerHTML = tab.muted ? MUTED_ICON : SOUND_ICON;
+      const audioLabel = tab.muted ? "Sitenin sesini aç" : "Siteyi sessize al";
+      audio.setAttribute("aria-label", audioLabel);
+      audio.title = audioLabel;
+      audio.addEventListener("click", (event) => {
+        event.stopPropagation();
+        run("tab_action", { id: tab.id, action: tab.muted ? "unmute" : "mute" });
+      });
+
       el.addEventListener("mousedown", (event) => {
+        if (event.target.closest(".tab-close, .tab-audio")) return;
         // Middle click closes the tab, like other browsers.
         if (event.button === 1) {
           event.preventDefault();
           closeTab(tab.id);
-        } else if (event.button === 0 && !event.target.closest(".tab-close")) {
+        } else if (event.button === 0) {
           run("switch_tab", { id: tab.id });
+          startDrag(tab, event);
         }
+      });
+      el.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        openTabMenu(tab, event);
       });
       el.querySelector(".tab-close").addEventListener("click", () => closeTab(tab.id));
       return el;
     }),
   );
 
-  const active = state.tabs.find((tab) => tab.id === state.active);
+  const active = activeTab();
   if (active) {
     if (document.activeElement !== address) {
       address.value = active.url;
@@ -96,16 +351,43 @@ function render() {
     const zoomed = active.url !== "" && Math.abs(active.zoom - 1) > 0.001;
     zoomButton.hidden = !zoomed;
     zoomButton.textContent = `${Math.round(active.zoom * 100)}%`;
+    if (!zoomed && popupKind === "zoom") closePopup();
+    renderSecurity(active.url);
   }
   renderStar();
 }
 
-listen("tabs", ({ payload }) => {
+// The icon at the start of the address bar: a lock on secure sites, a warning
+// and "Güvenli değil" on http, a magnifier on the new tab page.
+const SITE_ICONS = {
+  search:
+    '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  lock: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+  warning:
+    '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>',
+  info: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/></svg>',
+};
+let shownSecurity = null;
+
+function renderSecurity(url) {
+  const kind = url === "" ? "search" : /^https:/i.test(url) ? "lock" : /^http:/i.test(url) ? "warning" : "info";
+  if (kind === shownSecurity) return;
+  shownSecurity = kind;
+  siteButton.innerHTML = SITE_ICONS[kind] + (kind === "warning" ? '<span class="not-secure">Güvenli değil</span>' : "");
+  siteButton.disabled = kind === "search";
+  siteButton.classList.toggle("unsafe", kind === "warning");
+  const label = kind === "lock" ? "Bağlantı güvenli. Site bilgileri" : kind === "warning" ? "Bağlantı güvenli değil. Site bilgileri" : "Site bilgileri";
+  siteButton.setAttribute("aria-label", label);
+  siteButton.title = kind === "search" ? "" : label;
+}
+
+listenHere("tabs", (payload) => {
   state = payload;
   render();
 });
 
-invoke("get_tabs").then((payload) => {
+run("get_tabs").then((payload) => {
+  if (!payload) return;
   state = payload;
   render();
 });
@@ -115,10 +397,6 @@ invoke("get_tabs").then((payload) => {
 const star = document.getElementById("star");
 const bar = document.getElementById("bookmarks-bar");
 let bookmarks = [];
-
-function activeTab() {
-  return state.tabs.find((tab) => tab.id === state.active);
-}
 
 function renderStar() {
   const tab = activeTab();
@@ -326,7 +604,7 @@ async function openPanel(name) {
     item.button?.setAttribute("aria-pressed", String(other === name));
   }
   openPanelName = name;
-  if (!wasOpen) await run("set_full_window", { open: true });
+  if (!wasOpen) await run("set_full_window_command", { open: true });
   await panel.load();
   if (panel.focus) panel.focus.focus();
 }
@@ -338,7 +616,7 @@ function closePanel() {
     item.button?.setAttribute("aria-pressed", "false");
   }
   openPanelName = null;
-  run("set_full_window", { open: false });
+  run("set_full_window_command", { open: false });
 }
 
 function togglePanel(name) {
@@ -350,12 +628,9 @@ for (const [name, item] of Object.entries(panels)) {
   item.button?.addEventListener("click", () => togglePanel(name));
 }
 document.querySelectorAll(".panel-close").forEach((button) => button.addEventListener("click", closePanel));
-listen("open-history", () => openPanel("history"));
-listen("open-downloads", () => openPanel("downloads"));
-listen("open-settings", () => openPanel("settings"));
-
-// The ⋮ menu: new tabs, zoom, history, downloads, bookmarks bar, settings.
-document.getElementById("menu-button").addEventListener("click", () => run("open_menu"));
+listenHere("open-history", () => openPanel("history"));
+listenHere("open-downloads", () => openPanel("downloads"));
+listenHere("open-settings", () => openPanel("settings"));
 
 // Using the tabs or the address bar closes the panel.
 tabsEl.addEventListener("mousedown", closePanel);
@@ -571,7 +846,7 @@ function actionFor(event) {
   const key = event.key.toLowerCase();
   const shift = event.shiftKey;
   if (key === "t") return shift ? "reopen-tab" : "new-tab";
-  if (key === "n" && shift) return "new-private-tab";
+  if (key === "n") return shift ? "new-private-window" : "new-window";
   if (key === "+" || key === "=") return "zoom-in";
   if (key === "-" || key === "_") return "zoom-out";
   if (key === "0" && !shift) return "zoom-reset";
@@ -609,7 +884,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-listen("focus-address", () => {
+listenHere("focus-address", () => {
   address.focus();
   address.select();
 });

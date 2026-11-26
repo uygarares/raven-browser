@@ -1,0 +1,140 @@
+@import url("theme.css");
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1a1e28;
+  color: var(--text);
+  font: 400 13px var(--font);
+  user-select: none;
+}
+
+.popup {
+  height: 100%;
+  outline: none;
+  padding: 6px;
+  border: 1px solid rgba(238, 240, 245, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.compact .item { height: 32px; }
+button.item:hover, button.item:focus-visible, .item.selected { background: rgba(238, 240, 245, 0.08); outline: none; }
+button.item:disabled { color: var(--text-3); background: transparent; }
+.item svg { flex: none; color: var(--text-2); }
+
+.label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+kbd {
+  flex: none;
+  font: 400 11px var(--mono);
+  color: var(--text-3);
+}
+
+hr {
+  flex: none;
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+/* Zoom: − 100% + */
+.zoom-row { padding-right: 4px; }
+.step, .zoom-value, .reset {
+  flex: none;
+  height: 28px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font: inherit;
+  cursor: default;
+}
+.step { width: 32px; }
+.step:hover, .zoom-value:hover, .reset:hover { background: rgba(238, 240, 245, 0.08); }
+.zoom-value {
+  width: 56px;
+  font: 400 12px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.step:focus-visible, .zoom-value:focus-visible, .reset:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.zoom-row.disabled .step, .zoom-row.disabled .zoom-value { opacity: 0.4; pointer-events: none; }
+
+/* The box that opens from the zoom % in the address bar. */
+.zoom-box {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+}
+.zoom-box .zoom-value { border: 0; width: auto; flex: 1; font-size: 13px; }
+.zoom-box .zoom-value:hover { background: transparent; }
+.reset { padding: 0 12px; margin-left: 4px; }
+
+/* Site info: security and permissions. */
+.site-head { padding: 8px 10px 10px; }
+.site-host { font: 500 14px var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.security { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--text-2); }
+.security.unsafe { color: #f0a14a; }
+.security svg { flex: none; }
+.security-note { margin: 4px 0 0 24px; color: var(--text-3); font-size: 12px; line-height: 1.4; }
+.section-title { padding: 6px 10px 2px; color: var(--text-3); font-size: 12px; }
+.permission { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; }
+.permission svg { flex: none; color: var(--text-2); }
+.permission .label { color: var(--text); }
+select {
+  flex: none;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+}
+select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.site-foot { display: flex; justify-content: flex-end; padding: 8px 4px 2px; margin-top: auto; }
+
+/* Address bar suggestions. */
+.suggestions { padding: 6px; }
+.suggestion { height: 36px; }
+.suggestion .mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  background: #2a2f3c;
+  color: var(--text);
+  font: 500 10px var(--font);
+  overflow: hidden;
+}
+.suggestion .mark img { width: 16px; height: 16px; }
+.suggestion .mark.plain { background: transparent; color: var(--text-2); }
+.suggestion .title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggestion .url { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+.suggestion .url::before { content: "– "; }
+.suggestion .kind { flex: none; color: var(--accent); }
