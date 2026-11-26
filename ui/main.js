@@ -97,7 +97,7 @@ function activeTab() {
 
 // The ⋮ menu: new tab, new windows, zoom, history, downloads, bookmarks bar, settings.
 const MENU_WIDTH = 328;
-const MENU_HEIGHT = 9 * 36 + 3 * 9 + 14;
+const MENU_HEIGHT = 9 * 34 + 3 * 11 + 14;
 popupButton(document.getElementById("menu-button"), "menu", (rect) => {
   const tab = activeTab();
   const page = Boolean(tab && tab.url !== "");
@@ -146,7 +146,7 @@ listen("extension-install", refreshAdblock);
 popupButton(adblockButton, "adblock", async (rect) => {
   await refreshAdblock();
   const width = 300;
-  const height = adblock.id ? (adblock.hasOptions ? 172 : 128) : adblock.busy ? 92 : 196;
+  const height = adblock.id ? (adblock.hasOptions ? 178 : 132) : adblock.busy ? 96 : 140;
   openPopup("adblock", adblock, { x: rect.right - width, y: rect.bottom + 4, width, height });
 });
 
@@ -159,7 +159,7 @@ popupButton(document.getElementById("extensions-button"), "extensions", async (r
   }
   const width = 320;
   const rows = Math.max(items.length, 1);
-  openPopup("extensions", { items }, { x: rect.right - width, y: rect.bottom + 4, width, height: 44 + rows * 44 + 9 + 36 + 14 });
+  openPopup("extensions", { items }, { x: rect.right - width, y: rect.bottom + 4, width, height: 40 + rows * 44 + 11 + 34 + 14 });
 });
 
 // Address bar suggestions from history and bookmarks.
@@ -266,7 +266,7 @@ function openTabMenu(tab, event) {
   const index = state.tabs.findIndex((item) => item.id === tab.id);
   const others = state.tabs.some((item) => item.id !== tab.id && !item.pinned);
   const right = state.tabs.slice(index + 1).some((item) => !item.pinned);
-  const height = 9 * 32 + 4 * 9 + 14;
+  const height = 9 * 32 + 4 * 11 + 14;
   openPopup(
     "tab-menu",
     { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right },
@@ -367,7 +367,7 @@ function updateTab(el, tab) {
   el.classList.toggle("active", isActive);
   el.classList.toggle("loading", isLoading);
   el.classList.toggle("new-tab-page", isNewTabPage);
-  el.classList.toggle("pinned", tab.pinned);
+  el.classList.toggle("pinned", Boolean(tab.pinned));
   el.setAttribute("aria-selected", String(isActive));
   if (el.title !== tab.title) {
     el.title = tab.title;

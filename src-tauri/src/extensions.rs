@@ -160,8 +160,16 @@ fn read_manifest(folder: &Path) -> (Option<String>, Option<String>) {
             .filter_map(|(size, file)| Some((size.parse::<i64>().ok()?, file.as_str()?)))
             .min_by_key(|(size, _)| (size - 48).abs())
             .and_then(|(_, file)| {
-                let bytes = fs::read(folder.join(file.trim_start_matches('/'))).ok()?;
-                (bytes.len() < 200_000).then(|| format!("data:image/png;base64,{}", base64(&bytes)))
+                let file = file.trim_start_matches('/');
+                let bytes = fs::read(folder.join(file)).ok()?;
+                let kind = match file.rsplit('.').next().map(|e| e.to_ascii_lowercase()).as_deref() {
+                    Some("svg") => "image/svg+xml",
+                    Some("jpg") | Some("jpeg") => "image/jpeg",
+                    Some("webp") => "image/webp",
+                    Some("gif") => "image/gif",
+                    _ => "image/png",
+                };
+                (bytes.len() < 500_000).then(|| format!("data:{kind};base64,{}", base64(&bytes)))
             })
     });
     (options, icon)
@@ -343,12 +351,21 @@ pub async fn get_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String
     Ok(found
         .into_iter()
         .map(|item| {
-            let known = saved.installed.iter().find(|e| e.id == item.id);
+            // Match by WebView2's id, else by name.
+            let known = saved
+                .installed
+                .iter()
+                .find(|e| e.id == item.id)
+                .or_else(|| saved.installed.iter().find(|e| !item.name.is_empty() && e.name == item.name));
+            // Read the icon again if it was not saved.
+            let icon = known.and_then(|e| {
+                e.icon.clone().or_else(|| folder_of(&app, &e.store_id).ok().and_then(|f| read_manifest(&f).1))
+            });
             ExtensionInfo {
                 name: if item.name.is_empty() { known.map(|e| e.name.clone()).unwrap_or_default() } else { item.name },
                 store_id: known.map(|e| e.store_id.clone()),
                 has_options: known.is_some_and(|e| e.options.is_some()),
-                icon: known.and_then(|e| e.icon.clone()),
+                icon,
                 adblock: known.is_some_and(|e| e.store_id == ADBLOCK_ID),
                 enabled: item.enabled,
                 id: item.id,

@@ -26,7 +26,9 @@ const BOOKMARKS_BAR: f64 = 32.0;
 
 /// Raven's dark background (the Solid theme's page color). Shown for a moment
 /// before a page draws itself, instead of a white flash.
-pub const BACKGROUND: tauri::window::Color = tauri::window::Color(11, 13, 20, 255);
+pub const BACKGROUND: tauri::window::Color = tauri::window::Color(17, 19, 23, 255);
+/// The popup menus' color (--menu in ui/theme.css).
+const MENU_BACKGROUND: tauri::window::Color = tauri::window::Color(29, 32, 39, 255);
 
 static SHOW_BOOKMARKS_BAR: AtomicBool = AtomicBool::new(false);
 static NEXT_WINDOW: AtomicU32 = AtomicU32::new(1);
@@ -127,6 +129,27 @@ fn bring_to_front(webview: &Webview) {
 #[cfg(not(windows))]
 fn bring_to_front(_webview: &Webview) {}
 
+/// Rounds a popup's corners (radius in logical pixels), so it looks like a card
+/// floating over the page. Windows clips the popup's child window to the shape.
+#[cfg(windows)]
+fn round_corners(webview: &Webview, size: (f64, f64), radius: f64) {
+    use ::windows::Win32::Foundation::HWND;
+    use ::windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
+    let scale = webview.window().scale_factor().unwrap_or(1.0);
+    let (width, height) = ((size.0 * scale).round() as i32, (size.1 * scale).round() as i32);
+    let diameter = (radius * 2.0 * scale).round() as i32;
+    let _ = webview.with_webview(move |platform| unsafe {
+        let mut hwnd = HWND::default();
+        if platform.controller().ParentWindow(&mut hwnd).is_ok() && !hwnd.is_invalid() {
+            let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
+            SetWindowRgn(hwnd, Some(region), true);
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn round_corners(_webview: &Webview, _size: (f64, f64), _radius: f64) {}
+
 /// Creates the window's popup webview, hidden, or returns the one there is.
 fn make_popup(app: &AppHandle, window: &str, focus: bool) -> Result<Webview, String> {
     let label = popup_label(window);
@@ -140,7 +163,7 @@ fn make_popup(app: &AppHandle, window: &str, focus: bool) -> Result<Webview, Str
             let handle = app.get_window(window).ok_or("No window")?;
             let builder = extensions::allow(
                 WebviewBuilder::new(&label, WebviewUrl::App("popup.html".into()))
-                    .background_color(BACKGROUND)
+                    .background_color(MENU_BACKGROUND)
                     .focused(focus),
             );
             let popup = handle
@@ -294,6 +317,9 @@ pub struct PopupRequest {
     pub data: serde_json::Value,
     /// Take the keyboard (not for address suggestions).
     pub focus: bool,
+    /// Size in logical pixels.
+    pub width: f64,
+    pub height: f64,
 }
 
 /// Opens the window's popup at a place (in the window, logical pixels) and size,
@@ -329,14 +355,11 @@ pub fn open_popup(
 /// The popup page has drawn what was asked: show it on top.
 fn show_popup(app: &AppHandle, window: &str) {
     let Some(popup) = app.get_webview(&popup_label(window)) else { return };
-    let focus = app
-        .state::<Windows>()
-        .last_popup
-        .lock()
-        .unwrap()
-        .get(window)
-        .map(|request| request.focus)
-        .unwrap_or(false);
+    let Some(request) = app.state::<Windows>().last_popup.lock().unwrap().get(window).cloned() else {
+        return;
+    };
+    let focus = request.focus;
+    round_corners(&popup, (request.width, request.height), 12.0);
     bring_to_front(&popup);
     let _ = popup.show();
     if focus {
@@ -387,7 +410,7 @@ pub async fn open_popup_command(
     focus: bool,
 ) -> Result<(), String> {
     let window = window_of(&webview);
-    let request = PopupRequest { window: window.clone(), kind, data, focus };
+    let request = PopupRequest { window: window.clone(), kind, data, focus, width, height };
     open_popup(&app, &window, request, (x, y), (width, height), focus)
 }
 

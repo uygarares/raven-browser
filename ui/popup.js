@@ -217,31 +217,44 @@ async function drawSiteInfo(data) {
 }
 
 // The shield: the ad blocker (uBlock Origin Lite) on or off.
+const BIG_SHIELD = svg('<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>', 22);
+
 function drawAdblock(data) {
-  const children = [el("div", { class: "box-head", html: ICONS.shield }, [el("span", { class: "label", text: "Reklam engelleyici" })])];
+  const card = el("div", { class: "shield-card" });
+  const title = el("div", { class: "shield-title", text: "Raven Kalkanı" });
+  const sub = el("div", { class: "shield-sub" });
+  card.append(el("div", { class: "shield-badge", html: BIG_SHIELD }), el("div", { class: "shield-text" }, [title, sub]));
+  const children = [card];
+
+  const show = (on) => {
+    card.classList.toggle("on", on);
+    sub.textContent = on ? "Reklamlar ve izleyiciler engelleniyor" : "Kapalı. Reklamlar görünür";
+  };
+
   if (data.id) {
-    const toggle = el("input", { type: "checkbox", class: "switch", role: "switch", "aria-label": "Reklam engelleyici açık" });
+    const toggle = el("input", { type: "checkbox", class: "switch big", role: "switch", "aria-label": "Raven Kalkanı açık" });
     toggle.checked = data.enabled;
     toggle.addEventListener("change", async () => {
+      show(toggle.checked);
       try {
         await invoke("set_extension_enabled", { id: data.id, enabled: toggle.checked });
-      } catch (error) {
+      } catch {
         toggle.checked = !toggle.checked;
+        show(toggle.checked);
       }
-      status.textContent = toggle.checked ? "Reklamlar ve izleyiciler engelleniyor" : "Kapalı: reklamlar görünür";
     });
-    children[0].append(toggle);
-    const status = el("p", { class: "box-text", text: data.enabled ? "Reklamlar ve izleyiciler engelleniyor" : "Kapalı: reklamlar görünür" });
-    children.push(status, el("p", { class: "box-note", text: "uBlock Origin Lite ile. Açıp kapatınca sayfayı yenile" }));
+    card.append(toggle);
+    show(data.enabled);
+    children.push(el("p", { class: "shield-note", text: "Açıp kapattıktan sonra sayfayı yenile" }));
     if (data.hasOptions) {
       children.push(el("hr"), item("settings", "Engelleme ayarları", null, () => run("open_extension_options", { id: data.id })));
     }
   } else if (data.busy) {
-    children.push(el("p", { class: "box-text", text: "Kuruluyor… Birkaç saniye sürer" }));
+    sub.textContent = "Kuruluyor… Birkaç saniye sürer";
   } else {
+    card.classList.add("problem");
+    sub.textContent = data.error || "Henüz kurulu değil";
     children.push(
-      el("p", { class: "box-text", text: data.error ? "Kurulamadı" : "Henüz kurulu değil" }),
-      el("p", { class: "box-note error", text: data.error || "" }),
       el("div", { class: "box-foot" }, [
         el("button", {
           class: "reset",

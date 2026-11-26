@@ -592,3 +592,54 @@ body.private-window { --tab-row: #110c1c; --bar: #191427; --field: #0f0b18; }
 @media (prefers-reduced-motion: reduce) {
   .tab.opening { animation: none; }
 }
+
+/* ---------- Calmer look (v2): one surface, pill tabs, more air ---------- */
+
+.tab-row { align-items: center; gap: 4px; padding-left: 14px; }
+.logo { width: 22px; height: 22px; margin: 0 6px 0 0; }
+.private-badge { align-self: center; margin: 0 6px 0 0; }
+.tabs { align-items: center; gap: 4px; padding-top: 6px; align-self: stretch; }
+
+.tab {
+  height: 30px;
+  flex-basis: 200px;
+  width: 200px;
+  gap: 8px;
+  padding: 0 4px 0 10px;
+  border-radius: 9px;
+  color: var(--text-2);
+}
+.tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+.tab.active { background: var(--tab-active); color: var(--text); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset; }
+.tab-title { font-size: 12.5px; }
+.tab-icon { background: rgba(255, 255, 255, 0.08); }
+/* The close button appears on the active tab and on hover, like Chrome. */
+.tab-close { width: 22px; height: 22px; opacity: 0; transition: opacity 120ms var(--ease), background-color 120ms var(--ease); }
+.tab.active .tab-close, .tab:hover .tab-close { opacity: 0.75; }
+.tab-close:hover { opacity: 1 !important; }
+.tab.pinned { width: 38px; min-width: 38px; }
+.new-tab { margin: 6px 0 0; width: 30px; height: 30px; }
+
+.nav-row { gap: 2px; padding: 0 10px 0 8px; border-bottom: 0; }
+.nav-row > .icon-button { width: 34px; height: 34px; border-radius: 10px; }
+
+.address {
+  height: 34px;
+  margin: 0 6px;
+  padding: 0 8px 0 12px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: var(--field);
+  transition: border-color 150ms var(--ease), background-color 150ms var(--ease);
+}
+.address:hover { background: #121419; }
+.address:focus-within { border-color: rgba(160, 127, 224, 0.6); background: var(--field); }
+.address input { font-size: 13.5px; }
+
+.bookmarks-bar { padding: 0 10px 4px; border-bottom: 0; }
+
+/* A soft line under the toolbar, where the page starts. */
+body:not(.with-bookmarks-bar) .nav-row, .bookmarks-bar { box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
+
+/* Window buttons a bit lighter. */
+.control { width: 44px; }
