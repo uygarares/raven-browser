@@ -302,6 +302,83 @@ pub fn start(app: &AppHandle) {
     });
 }
 
+/// The small window an extension's toolbar button opens (action.default_popup).
+fn popup_page(folder: &Path) -> Option<String> {
+    let text = fs::read_to_string(folder.join("manifest.json")).ok()?;
+    let manifest: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()?;
+    manifest["action"]["default_popup"]
+        .as_str()
+        .or(manifest["browser_action"]["default_popup"].as_str())
+        .map(|page| page.trim_start_matches('/').to_string())
+        .filter(|page| !page.is_empty())
+}
+
+const EXT_POPUP_WIDTH: f64 = 380.0;
+const EXT_POPUP_HEIGHT: f64 = 560.0;
+
+/// Closes the extension's popup when it loses the keyboard (a click elsewhere).
+const EXT_POPUP_SCRIPT: &str = r#"addEventListener("blur", () => { location.href = "raven-action:close-extension-popup"; });"#;
+
+/// Opens an extension's popup under the extensions button.
+#[tauri::command]
+pub async fn open_extension_popup(app: AppHandle, webview: Webview, id: String, x: f64, y: f64) -> Result<(), String> {
+    let window = windows::window_of(&webview);
+    let store_id = app
+        .state::<Extensions>()
+        .saved
+        .lock()
+        .unwrap()
+        .installed
+        .iter()
+        .find(|e| e.id == id)
+        .map(|e| e.store_id.clone())
+        .ok_or("Bu uzantının penceresi yok")?;
+    let page = popup_page(&folder_of(&app, &store_id)?).ok_or("Bu uzantının penceresi yok")?;
+    let url: tauri::Url = format!("chrome-extension://{id}/{page}").parse().map_err(|_| "Bad address")?;
+    let label = format!("extpop-{window}");
+    let x = (x - EXT_POPUP_WIDTH).max(8.0);
+    let panel = match app.get_webview(&label) {
+        Some(panel) => {
+            let _ = panel.navigate(url);
+            panel
+        }
+        None => {
+            let handle = app.get_window(&window).ok_or("No window")?;
+            let closer = app.clone();
+            let name = label.clone();
+            let builder = allow(tauri::webview::WebviewBuilder::new(&label, tauri::WebviewUrl::External(url)))
+                .background_color(windows::BACKGROUND)
+                .initialization_script(EXT_POPUP_SCRIPT)
+                .on_navigation(move |target| {
+                    if target.as_str().starts_with("raven-action:close-extension-popup") {
+                        if let Some(panel) = closer.get_webview(&name) {
+                            let _ = panel.hide();
+                        }
+                        return false;
+                    }
+                    true
+                });
+            handle
+                .add_child(builder, tauri::LogicalPosition::new(x, y), tauri::LogicalSize::new(EXT_POPUP_WIDTH, EXT_POPUP_HEIGHT))
+                .map_err(|e| e.to_string())?
+        }
+    };
+    let _ = panel.set_position(tauri::LogicalPosition::new(x, y));
+    let _ = panel.set_size(tauri::LogicalSize::new(EXT_POPUP_WIDTH, EXT_POPUP_HEIGHT));
+    windows::round_corners(&panel, (EXT_POPUP_WIDTH, EXT_POPUP_HEIGHT), 14.0);
+    windows::bring_to_front(&panel);
+    let _ = panel.show();
+    let _ = panel.set_focus();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn close_extension_popup(app: AppHandle, webview: Webview) {
+    if let Some(panel) = app.get_webview(&format!("extpop-{}", windows::window_of(&webview))) {
+        let _ = panel.hide();
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionInfo {
@@ -313,6 +390,8 @@ pub struct ExtensionInfo {
     icon: Option<String>,
     /// The ad blocker Raven adds by itself.
     adblock: bool,
+    /// It has a toolbar window (opened from the extensions box).
+    has_popup: bool,
 }
 
 /// On extension pages of the Chrome Web Store, the store's own "Chrome'a ekle"
@@ -392,12 +471,14 @@ pub async fn get_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String
             let icon = known.and_then(|e| {
                 e.icon.clone().or_else(|| folder_of(&app, &e.store_id).ok().and_then(|f| read_manifest(&f).1))
             });
+            let has_popup = known.is_some_and(|e| folder_of(&app, &e.store_id).ok().and_then(|f| popup_page(&f)).is_some());
             ExtensionInfo {
                 name: if item.name.is_empty() { known.map(|e| e.name.clone()).unwrap_or_default() } else { item.name },
                 store_id: known.map(|e| e.store_id.clone()),
                 has_options: known.is_some_and(|e| e.options.is_some()),
                 icon,
                 adblock: known.is_some_and(|e| e.store_id == ADBLOCK_ID),
+                has_popup,
                 enabled: item.enabled,
                 id: item.id,
             }

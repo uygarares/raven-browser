@@ -362,8 +362,16 @@ function drawExtensions(data) {
         toggle.checked = !toggle.checked;
       }
     });
-    const name = el("span", { class: "label", text: ext.name || ext.id, title: ext.name });
-    const row = el("div", { class: "ext-row" }, [icon, name]);
+    const name = el("span", { class: "label", text: ext.name || ext.id, title: ext.hasPopup ? `${ext.name}: penceresini aç` : ext.name });
+    const row = el("div", { class: "ext-row" + (ext.hasPopup ? " has-popup" : "") }, [icon, name]);
+    if (ext.hasPopup && ext.enabled) {
+      const open = async () => {
+        close();
+        await run("open_extension_popup", { id: ext.id, x: data.anchorX, y: data.anchorY });
+      };
+      icon.addEventListener("click", open);
+      name.addEventListener("click", open);
+    }
     if (ext.hasOptions) {
       row.append(el("button", {
         class: "step",

@@ -182,7 +182,7 @@ popupButton(document.getElementById("extensions-button"), "extensions", async (r
   }
   const width = 320;
   const rows = Math.max(items.length, 1);
-  openPopup("extensions", { items }, { x: rect.right - width, y: rect.bottom + 4, width, height: 40 + rows * 44 + 11 + 34 + 14 });
+  openPopup("extensions", { items, anchorX: rect.right, anchorY: rect.bottom + 4 }, { x: rect.right - width, y: rect.bottom + 4, width, height: 40 + rows * 44 + 11 + 34 + 14 });
 });
 
 // Media button: shows while a tab plays sound (or was paused from here).

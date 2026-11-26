@@ -194,7 +194,7 @@ pub fn tab_created(app: &AppHandle, window: &str) {
 /// Puts a webview above the window's other webviews (tabs made later are
 /// drawn on top of older webviews).
 #[cfg(windows)]
-fn bring_to_front(webview: &Webview) {
+pub fn bring_to_front(webview: &Webview) {
     use ::windows::Win32::Foundation::HWND;
     use ::windows::Win32::UI::WindowsAndMessaging::{
         SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
@@ -209,7 +209,7 @@ fn bring_to_front(webview: &Webview) {
 }
 
 #[cfg(not(windows))]
-fn bring_to_front(_webview: &Webview) {}
+pub fn bring_to_front(_webview: &Webview) {}
 
 /// Rounds a popup's corners (radius in logical pixels), so it looks like a card
 /// floating over the page. Windows clips the popup's child window to the shape.

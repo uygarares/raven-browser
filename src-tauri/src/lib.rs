@@ -106,6 +106,8 @@ pub fn run() {
             extensions::remove_extension,
             extensions::open_extension_options,
             extensions::open_extension_store,
+            extensions::open_extension_popup,
+            extensions::close_extension_popup,
             perf::get_archive,
             perf::open_archived,
             perf::clear_archive,
