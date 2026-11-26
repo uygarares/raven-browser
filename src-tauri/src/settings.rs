@@ -52,6 +52,8 @@ pub struct Settings {
     pub game_mode: bool,
     /// Raven Shield blocks ads and trackers.
     pub shield: bool,
+    /// The shield also hides "we use cookies" banners.
+    pub hide_cookie_banners: bool,
     /// Videos start only after you click (muted autoplay still allowed).
     pub block_autoplay: bool,
     /// Upgrade http:// addresses to https://.
@@ -121,6 +123,7 @@ impl Default for Settings {
             archive_days: 0,
             game_mode: true,
             shield: true,
+            hide_cookie_banners: true,
             block_autoplay: false,
             https_upgrade: true,
             vertical_tabs: false,
@@ -188,6 +191,7 @@ pub async fn get_settings(app: AppHandle) -> Settings {
 #[tauri::command]
 pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
     let settings = settings.clamped();
+    let cookies_changed = app.state::<SettingsState>().0.lock().unwrap().hide_cookie_banners != settings.hide_cookie_banners;
     store(&app, &settings)?;
     *app.state::<SettingsState>().0.lock().unwrap() = settings.clone();
     let _ = app.emit("settings", &settings);
@@ -196,6 +200,9 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<Setting
     crate::bookmarks::refresh_bar(&app);
     // New tab pages read the search engine when they load, so reload the open ones.
     crate::tabs::reload_new_tab_pages(&app);
+    if cookies_changed {
+        crate::shield::rebuild(&app);
+    }
     Ok(settings)
 }
 

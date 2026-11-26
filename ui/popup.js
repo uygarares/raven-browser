@@ -57,6 +57,7 @@ const ICONS = {
   qr: svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-4M14 18v3"/>'),
   play: svg('<path d="M7 5l12 7-12 7z"/>', 14),
   pause: svg('<path d="M8 5v14M16 5v14"/>', 14),
+  pip: svg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><rect x="12" y="11" width="6.5" height="5" rx="1" fill="currentColor" stroke="none"/>'),
   music: svg('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'),
   chevronUp: svg('<path d="M6 15l6-6 6 6"/>', 14),
   chevronDown: svg('<path d="M6 9l6 6 6-6"/>', 14),
@@ -488,6 +489,7 @@ const COMMANDS = [
   ["sparkle", "Bu sayfayı Türkçeye çevir", "ai:translate", ""],
   ["search", "Sayfada bul", "find", "Ctrl+F"],
   ["book", "Okuma görünümü", "reader-mode", ""],
+  ["pip", "Resim içinde resim (videoyu ayrı pencerede oynat)", "picture-in-picture", ""],
   ["print", "Yazdır", "print", "Ctrl+P"],
   ["camera", "Ekran görüntüsü al", "screenshot", "Ctrl+Shift+S"],
   ["qr", "Bu sayfanın QR kodu", "ui:qr", ""],
@@ -715,7 +717,12 @@ function drawMedia(data) {
       run("switch_tab", { id: item.id });
       close();
     });
-    return el("div", { class: "media-row" }, [mark, text, play, mute]);
+    const pip = el("button", { class: "step", title: "Resim içinde resim", html: ICONS.pip });
+    pip.addEventListener("click", () => {
+      run("media_command", { id: item.id, action: "pip" });
+      close();
+    });
+    return el("div", { class: "media-row" }, [mark, text, pip, play, mute]);
   });
   root.className = "popup";
   root.replaceChildren(el("div", { class: "box-head", html: ICONS.music }, [el("span", { class: "label", text: "Çalan medya" })]), ...rows);
@@ -752,7 +759,16 @@ function drawQr(data) {
 
 function drawToast(data) {
   root.className = "popup toast";
-  root.replaceChildren(el("span", { class: "label", text: data.text }));
+  const parts = [el("span", { class: "label", text: data.text })];
+  if (data.action) {
+    const button = el("button", { class: "toast-action", text: data.action.label });
+    button.addEventListener("click", () => {
+      run("open_url", { url: data.action.url, newTab: false });
+      close();
+    });
+    parts.push(button);
+  }
+  root.replaceChildren(...parts);
 }
 
 const DRAW = {

@@ -62,6 +62,8 @@ pub enum Action {
     Unsplit,
     /// Put the other tabs to sleep now.
     SleepOtherTabs,
+    /// The video of the page in a floating window.
+    PictureInPicture,
 }
 
 /// Matches a key press to an action, like Chrome: Ctrl+T, Ctrl+N, Ctrl+Shift+N,
@@ -205,6 +207,12 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
                 .ok_or_else(|| "No page".to_string())
                 .and_then(|tab| tab.print().map_err(|e| e.to_string())),
             Action::ReaderMode => crate::reader::toggle(&app, window),
+            Action::PictureInPicture => {
+                if let Some(tab) = tabs::active_webview(&app, window) {
+                    crate::native::run_as_user(&tab, tabs::PIP_SCRIPT);
+                }
+                Ok(())
+            }
             Action::SavePage => {
                 if let Some(tab) = tabs::active_webview(&app, window) {
                     crate::native::save_page(&tab);

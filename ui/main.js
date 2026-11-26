@@ -1822,16 +1822,23 @@ listenHere("open-tab-search", () => openPalette("tabs"));
 // Short messages at the bottom of the page ("Ekran görüntüsü kaydedildi"),
 // drawn by the popup so they show over the page.
 let toastTimer = null;
-function showToast(text) {
+function showToast(text, action = null) {
   if (popupKind && popupKind !== "toast") return;
   const page = pageRect();
-  const width = Math.min(520, page.width - 40);
-  openPopup("toast", { text }, { x: page.left + (page.width - width) / 2, y: page.bottom - 64, width, height: 46, focus: false });
+  const width = Math.min(action ? 600 : 520, page.width - 40);
+  openPopup("toast", { text, action }, { x: page.left + (page.width - width) / 2, y: page.bottom - 64, width, height: 46, focus: false });
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     if (popupKind === "toast") closePopup();
-  }, 3500);
+  }, action ? 9000 : 3500);
 }
+
+// A missing page or a site that is down: offer the copy in the Internet Archive.
+listenHere("page-failed", (payload) => {
+  if (payload.tab !== state.active) return;
+  const text = payload.problem === "offline" ? "Bu siteye ulaşılamıyor" : "Bu sayfa artık yok";
+  showToast(text, { label: "Arşivdeki halini aç", url: `https://web.archive.org/web/2/${payload.url}` });
+});
 listenHere("toast", (payload) => showToast(payload.text));
 
 // QR code of the page, from the site info button's neighbour: the palette.

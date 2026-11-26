@@ -102,6 +102,9 @@ pub fn upgrade(mut url: Url) -> Url {
     url
 }
 
+/// Puts the biggest video of the page in a floating window, or takes it back.
+pub const PIP_SCRIPT: &str = r#"(() => { if (document.pictureInPictureElement) return document.exitPictureInPicture(); const v = [...document.querySelectorAll("video")].sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight))[0]; if (v) { v.disablePictureInPicture = false; return v.requestPictureInPicture(); } })()"#;
+
 /// Seconds since 1970.
 pub fn now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -539,6 +542,8 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
         // Private windows use WebView2's InPrivate mode.
         .incognito(private)
         .initialization_script(LINK_SCRIPT)
+        // Global Privacy Control, the script side of the Sec-GPC header.
+        .initialization_script("Object.defineProperty(Navigator.prototype, 'globalPrivacyControl', { get: () => true, configurable: true });")
         .initialization_script(extensions::STORE_SCRIPT)
         .on_navigation(move |url| {
             if let Some(action) = url.as_str().strip_prefix(ACTION_PREFIX) {
@@ -576,6 +581,18 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                     let _ = zoom_tab(&app, id, direction);
                 });
                 return false;
+            }
+            // Tracking parameters (utm_source, fbclid...) are removed before the page loads.
+            if crate::shield::cleans_urls(&on_link) {
+                if let Some(clean) = crate::shield::clean_url(url) {
+                    let app = on_link.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(tab) = app.get_webview(&label(id)) {
+                            let _ = tab.navigate(clean);
+                        }
+                    });
+                    return false;
+                }
             }
             // Middle click or Ctrl+click on a link: open it next to this tab, in the background.
             let Some(link) = url.as_str().strip_prefix(BACKGROUND_PREFIX) else {
@@ -683,6 +700,19 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     crate::native::watch_fullscreen(app, &webview, page_fullscreen);
     crate::shield::attach(app, &webview, id);
     {
+        // A missing page (404) or a site that cannot be reached: the toolbar
+        // offers the copy in the Internet Archive.
+        let app = app.clone();
+        crate::native::watch_failures(&webview, move |url, problem| {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(window) = window_of_tab(&app, id) {
+                    let _ = app.emit("page-failed", serde_json::json!({ "window": window, "tab": id, "url": url, "problem": problem }));
+                }
+            });
+        });
+    }
+    {
         let app = app.clone();
         crate::native::extend_context_menu(
             &webview,
@@ -701,6 +731,11 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                         }
                         crate::native::MenuChoice::AskAi(text) => {
                             crate::ai::ask_direct(&app, &window, &format!("Bunu açıkla:\n\n{text}"));
+                        }
+                        crate::native::MenuChoice::SearchImage(source) => {
+                            if let Ok(url) = tauri::Url::parse_with_params("https://lens.google.com/uploadbyurl", &[("url", source)]) {
+                                let _ = create_tab_at(&app, &window, url.as_str(), true, Place::NextTo(id));
+                            }
                         }
                         crate::native::MenuChoice::Summarize => {
                             let _ = crate::ai::ask_in(&app, &window, "summarize", None).await;
@@ -1519,6 +1554,11 @@ pub async fn media_command(app: AppHandle, id: u32, action: String) -> Result<()
     let tab = app.get_webview(&label(id)).ok_or("Tab is asleep")?;
     let script = match action.as_str() {
         "pause" => r#"(() => { window.__ravenPaused = [...document.querySelectorAll("video, audio")].filter((m) => !m.paused); window.__ravenPaused.forEach((m) => m.pause()); })()"#,
+        // A floating video window that stays on top of everything.
+        "pip" => {
+            crate::native::run_as_user(&tab, PIP_SCRIPT);
+            return Ok(());
+        }
         "play" => r#"(() => { (window.__ravenPaused || [...document.querySelectorAll("video, audio")].slice(0, 1)).forEach((m) => m.play().catch(() => {})); window.__ravenPaused = null; })()"#,
         _ => return Err("Unknown media action".into()),
     };

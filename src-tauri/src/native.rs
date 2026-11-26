@@ -50,6 +50,8 @@ pub enum MenuChoice {
     OpenLink(String),
     /// Summarize the page with the AI.
     Summarize,
+    /// Search for a picture with Google Lens.
+    SearchImage(String),
 }
 
 /// Adds Raven's items to the right-click menu of a tab.
@@ -98,6 +100,18 @@ pub fn site_cookies(webview: &Webview, url: &str, delete: bool) -> Result<usize,
 pub struct Memory {
     pub total: u64,
     pub pages: Vec<(String, u64)>,
+}
+
+/// Runs a script as if the person had clicked (needed for picture in picture
+/// and similar). Does not wait for an answer.
+pub fn run_as_user(webview: &Webview, script: &str) {
+    imp::run_as_user(webview, script.to_string());
+}
+
+/// Calls `on_failed(url, problem)` when a page fails to load: "404" or "410"
+/// from the site, or "offline" when the site could not be reached.
+pub fn watch_failures(webview: &Webview, on_failed: impl Fn(String, &'static str) + Send + 'static) {
+    imp::watch_failures(webview, on_failed);
 }
 
 /// Measures memory (Windows). Call it off the main thread.
@@ -217,6 +231,10 @@ mod imp {
             let handler = WebResourceRequestedEventHandler::create(Box::new(move |sender, args| {
                 let (Some(sender), Some(args)) = (sender, args) else { return Ok(()) };
                 unsafe {
+                    // Global Privacy Control: asks every site not to sell or share your data.
+                    if let Ok(headers) = args.Request().and_then(|r| r.Headers()) {
+                        let _ = headers.SetHeader(&HSTRING::from("Sec-GPC"), &HSTRING::from("1"));
+                    }
                     let mut context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT::default();
                     args.ResourceContext(&mut context)?;
                     let kind = match context {
@@ -257,6 +275,62 @@ mod imp {
         });
     }
 
+    pub fn run_as_user(webview: &Webview, script: String) {
+        use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+        let params = serde_json::json!({ "expression": script, "userGesture": true, "awaitPromise": false }).to_string();
+        let _ = webview.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2() else { return };
+            let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+            let _ = core.CallDevToolsProtocolMethod(&HSTRING::from("Runtime.evaluate"), &HSTRING::from(params.as_str()), &handler);
+        });
+    }
+
+    pub fn watch_failures(webview: &Webview, on_failed: impl Fn(String, &'static str) + Send + 'static) {
+        use webview2_com::NavigationCompletedEventHandler;
+        let _ = webview.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2() else { return };
+            let handler = NavigationCompletedEventHandler::create(Box::new(move |sender, args| {
+                let (Some(sender), Some(args)) = (sender, args) else { return Ok(()) };
+                unsafe {
+                    let mut ok = BOOL::default();
+                    args.IsSuccess(&mut ok)?;
+                    let problem = if ok.as_bool() {
+                        let mut status = 0i32;
+                        if let Ok(args) = args.cast::<ICoreWebView2NavigationCompletedEventArgs2>() {
+                            args.HttpStatusCode(&mut status)?;
+                        }
+                        match status {
+                            404 => "404",
+                            410 => "410",
+                            _ => return Ok(()),
+                        }
+                    } else {
+                        let mut error = COREWEBVIEW2_WEB_ERROR_STATUS::default();
+                        args.WebErrorStatus(&mut error)?;
+                        match error {
+                            COREWEBVIEW2_WEB_ERROR_STATUS_HOST_NAME_NOT_RESOLVED
+                            | COREWEBVIEW2_WEB_ERROR_STATUS_CANNOT_CONNECT
+                            | COREWEBVIEW2_WEB_ERROR_STATUS_SERVER_UNREACHABLE
+                            | COREWEBVIEW2_WEB_ERROR_STATUS_TIMEOUT
+                            | COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_RESET
+                            | COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_ABORTED => "offline",
+                            _ => return Ok(()),
+                        }
+                    };
+                    let mut source = PWSTR::null();
+                    sender.Source(&mut source)?;
+                    let url = CoTaskMemPWSTR::from(source).to_string();
+                    if url.starts_with("http") {
+                        on_failed(url, problem);
+                    }
+                }
+                Ok(())
+            }));
+            let mut token = 0i64;
+            let _ = core.add_NavigationCompleted(&handler, &mut token);
+        });
+    }
+
     pub fn extend_context_menu(webview: &Webview, on_pick: std::sync::Arc<dyn Fn(super::MenuChoice) + Send + Sync>) {
         use super::MenuChoice;
         use webview2_com::{ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler};
@@ -275,6 +349,17 @@ mod imp {
                         let mut link = PWSTR::null();
                         target.LinkUri(&mut link)?;
                         choices.push(("Bağlantıyı yeni sekmede aç".into(), MenuChoice::OpenLink(CoTaskMemPWSTR::from(link).to_string())));
+                    }
+                    let mut kind = COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND::default();
+                    target.Kind(&mut kind)?;
+                    target.HasSourceUri(&mut has)?;
+                    if kind == COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE && has.as_bool() {
+                        let mut source = PWSTR::null();
+                        target.SourceUri(&mut source)?;
+                        let source = CoTaskMemPWSTR::from(source).to_string();
+                        if source.starts_with("http") {
+                            choices.push(("Görseli Google Lens ile ara".into(), MenuChoice::SearchImage(source)));
+                        }
                     }
                     target.HasSelection(&mut has)?;
                     if has.as_bool() {
@@ -505,6 +590,8 @@ mod imp {
         Ok(())
     }
     pub fn save_page(_webview: &Webview) {}
+    pub fn run_as_user(_webview: &Webview, _script: String) {}
+    pub fn watch_failures(_webview: &Webview, _on_failed: impl Fn(String, &'static str) + Send + 'static) {}
     pub fn site_cookies(_webview: &Webview, _url: String, _delete: bool, tx: Sender<Result<usize, String>>) -> Result<(), String> {
         let _ = tx.send(Err("Only on Windows".into()));
         Ok(())

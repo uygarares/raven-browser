@@ -24,6 +24,8 @@ const LISTS: &[(&str, &str)] = &[
     ("ublock-filters.txt", "https://ublockorigin.github.io/uAssets/filters/filters.txt"),
     ("ublock-privacy.txt", "https://ublockorigin.github.io/uAssets/filters/privacy.txt"),
 ];
+/// "We use cookies" banners (EasyList Cookie), when that setting is on.
+const COOKIE_LIST: (&str, &str) = ("easylist-cookie.txt", "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt");
 /// Lists older than this are downloaded again.
 const REFRESH: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
@@ -95,6 +97,42 @@ fn shield_on(app: &AppHandle) -> bool {
     app.state::<SettingsState>().0.lock().unwrap().shield
 }
 
+/// Query parameters that only exist to follow you from site to site.
+const TRACKING: &[&str] = &[
+    "fbclid", "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "msclkid", "mc_cid", "mc_eid", "igshid", "yclid",
+    "_hsenc", "_hsmi", "mkt_tok", "oly_anon_id", "oly_enc_id", "vero_id", "rb_clickid", "s_cid", "ttclid",
+    "twclid", "srsltid", "__s", "_openstat", "wickedid", "ml_subscriber", "ml_subscriber_hash",
+];
+
+/// The address without tracking parameters (utm_source, fbclid...), or None
+/// when there is nothing to remove.
+pub fn clean_url(url: &tauri::Url) -> Option<tauri::Url> {
+    if !matches!(url.scheme(), "http" | "https") || url.query().is_none() {
+        return None;
+    }
+    let tracking = |name: &str| {
+        let name = name.to_ascii_lowercase();
+        name.starts_with("utm_") || TRACKING.contains(&name.as_str())
+    };
+    let pairs: Vec<(String, String)> = url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+    if !pairs.iter().any(|(k, _)| tracking(k)) {
+        return None;
+    }
+    let mut clean = url.clone();
+    let kept: Vec<&(String, String)> = pairs.iter().filter(|(k, _)| !tracking(k)).collect();
+    if kept.is_empty() {
+        clean.set_query(None);
+    } else {
+        clean.query_pairs_mut().clear().extend_pairs(kept.iter().map(|(k, v)| (k, v)));
+    }
+    Some(clean)
+}
+
+/// Removing tracking parameters is part of the shield.
+pub fn cleans_urls(app: &AppHandle) -> bool {
+    shield_on(app)
+}
+
 /// Checks one request of tab `id`. Called on the main thread for every request.
 fn check(app: &AppHandle, id: u32, url: &str, source: &str, kind: &str) -> bool {
     let shield = app.state::<Shield>();
@@ -161,7 +199,9 @@ fn prepare(app: &AppHandle) -> Result<(), String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut texts = Vec::new();
     let mut failures = Vec::new();
-    for (file, url) in LISTS {
+    let cookies = app.state::<SettingsState>().0.lock().unwrap().hide_cookie_banners;
+    let lists = LISTS.iter().chain(cookies.then_some(&COOKIE_LIST));
+    for (file, url) in lists {
         let path = dir.join(file);
         let fresh = std::fs::metadata(&path)
             .and_then(|m| m.modified())
@@ -186,6 +226,16 @@ fn prepare(app: &AppHandle) -> Result<(), String> {
     let engine = build(&texts);
     *app.state::<Shield>().engine.write().unwrap() = Some(Arc::new(engine));
     Ok(())
+}
+
+/// Builds the engine again (the cookie banner setting changed).
+pub fn rebuild(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let result = prepare(&app);
+        *app.state::<Shield>().error.lock().unwrap() = result.err();
+        let _ = app.emit("shield-ready", ());
+    });
 }
 
 /// Loads the shield in the background and tells toolbars about new counts.
@@ -306,6 +356,15 @@ mod tests {
         assert!(blocks(&engine, "https://ads.example.com/a.png", "https://news.com/", "image"));
         assert!(!blocks(&engine, "https://ads.example.com/ok.js", "https://news.com/", "script"));
         assert!(!blocks(&engine, "https://news.com/app.js", "https://news.com/", "script"));
+    }
+
+    #[test]
+    fn removes_tracking_parameters() {
+        let clean = |u: &str| clean_url(&u.parse().unwrap()).map(|u| u.to_string());
+        assert_eq!(clean("https://a.com/x?utm_source=tw&id=5&fbclid=abc").as_deref(), Some("https://a.com/x?id=5"));
+        assert_eq!(clean("https://a.com/x?UTM_medium=1").as_deref(), Some("https://a.com/x"));
+        assert_eq!(clean("https://a.com/x?id=5"), None);
+        assert_eq!(clean("https://a.com/x"), None);
     }
 
     #[test]
