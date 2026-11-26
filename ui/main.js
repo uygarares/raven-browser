@@ -9,6 +9,12 @@ function run(command, args) {
   invoke(command, args).catch((error) => console.error(command, error));
 }
 
+// Raven draws its own minimize, maximize and close buttons.
+const appWindow = window.__TAURI__.window.getCurrentWindow();
+document.getElementById("minimize").addEventListener("click", () => appWindow.minimize());
+document.getElementById("maximize").addEventListener("click", () => appWindow.toggleMaximize());
+document.getElementById("close").addEventListener("click", () => appWindow.close());
+
 document.getElementById("back").addEventListener("click", () => run("go_back"));
 document.getElementById("forward").addEventListener("click", () => run("go_forward"));
 document.getElementById("reload").addEventListener("click", () => run("reload"));

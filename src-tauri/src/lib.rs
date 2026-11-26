@@ -11,7 +11,8 @@ use tauri::{
     WindowEvent,
 };
 
-const TOOLBAR_HEIGHT: f64 = 60.0;
+/// Must match `--toolbar-height` in ui/style.css.
+const TOOLBAR_HEIGHT: f64 = 48.0;
 const HOME_URL: &str = "https://www.google.com";
 const SEARCH_URL: &str = "https://www.google.com/search";
 
@@ -76,6 +77,9 @@ pub fn run() {
                 .title("Raven")
                 .inner_size(width, height)
                 .min_inner_size(640.0, 400.0)
+                // No Windows title bar: Raven's toolbar has its own window buttons.
+                .decorations(false)
+                .shadow(true)
                 .build()?;
 
             // Raven's toolbar.
