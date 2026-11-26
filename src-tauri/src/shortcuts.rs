@@ -50,6 +50,8 @@ pub enum Action {
     /// The reading view of the page.
     ReaderMode,
     OpenArchive,
+    /// Ctrl+Shift+O.
+    OpenBookmarks,
     /// Put the other tabs to sleep now.
     SleepOtherTabs,
 }
@@ -73,6 +75,7 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
         (0x4B, false) => Action::CommandPalette, // K
         (0x41, true) => Action::TabSearch,       // Shift+A
         (0x49, true) => Action::DevTools,        // Shift+I
+        (0x4F, true) => Action::OpenBookmarks,   // Shift+O
         (0x54, false) => Action::NewTab,      // T
         (0x54, true) => Action::ReopenTab,    // Shift+T
         (0x4E, false) => Action::NewWindow,   // N
@@ -191,6 +194,10 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
                 .ok_or_else(|| "No page".to_string())
                 .and_then(|tab| tab.print().map_err(|e| e.to_string())),
             Action::ReaderMode => crate::reader::toggle(&app, window),
+            Action::OpenBookmarks => {
+                tell_toolbar(&app, window, "open-bookmarks");
+                Ok(())
+            }
             Action::OpenArchive => {
                 tell_toolbar(&app, window, "open-archive");
                 Ok(())

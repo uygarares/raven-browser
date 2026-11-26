@@ -38,6 +38,36 @@ pub fn watch_requests(webview: &Webview, check: impl Fn(&str, &str, &'static str
     imp::watch_requests(webview, check);
 }
 
+/// Raven's own items in a page's right-click menu.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub enum MenuChoice {
+    /// Ask the AI about the selected text.
+    AskAi(String),
+    /// Search the web for the selected text (new tab).
+    Search(String),
+    /// Open a link in a new tab.
+    OpenLink(String),
+    /// Summarize the page with the AI.
+    Summarize,
+}
+
+/// Adds Raven's items to the right-click menu of a tab.
+pub fn extend_context_menu(webview: &Webview, on_pick: std::sync::Arc<dyn Fn(MenuChoice) + Send + Sync>) {
+    imp::extend_context_menu(webview, on_pick);
+}
+
+/// Short label text for a selection: the first 24 characters.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn short(text: &str) -> String {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.chars().count() > 24 {
+        format!("{}…", text.chars().take(24).collect::<String>())
+    } else {
+        text
+    }
+}
+
 /// Memory of Raven's browser processes: the total, and per page address
 /// (the renderer that shows that page), in bytes.
 pub struct Memory {
@@ -202,6 +232,68 @@ mod imp {
         });
     }
 
+    pub fn extend_context_menu(webview: &Webview, on_pick: std::sync::Arc<dyn Fn(super::MenuChoice) + Send + Sync>) {
+        use super::MenuChoice;
+        use webview2_com::{ContextMenuRequestedEventHandler, CustomItemSelectedEventHandler};
+        let _ = webview.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_11>()) else { return };
+            let Ok(environment) = platform.environment().cast::<ICoreWebView2Environment9>() else { return };
+            let handler = ContextMenuRequestedEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                unsafe {
+                    let target = args.ContextMenuTarget()?;
+                    let menu = args.MenuItems()?;
+                    let mut choices: Vec<(String, MenuChoice)> = Vec::new();
+                    let mut has = BOOL::default();
+                    target.HasLinkUri(&mut has)?;
+                    if has.as_bool() {
+                        let mut link = PWSTR::null();
+                        target.LinkUri(&mut link)?;
+                        choices.push(("Bağlantıyı yeni sekmede aç".into(), MenuChoice::OpenLink(CoTaskMemPWSTR::from(link).to_string())));
+                    }
+                    target.HasSelection(&mut has)?;
+                    if has.as_bool() {
+                        let mut text = PWSTR::null();
+                        target.SelectionText(&mut text)?;
+                        let text = CoTaskMemPWSTR::from(text).to_string();
+                        let label = super::short(&text);
+                        choices.push((format!("Yapay zekaya sor: “{label}”"), MenuChoice::AskAi(text.clone())));
+                        choices.push((format!("Ara: “{label}”"), MenuChoice::Search(text)));
+                    }
+                    if choices.is_empty() {
+                        choices.push(("Bu sayfayı yapay zekayla özetle".into(), MenuChoice::Summarize));
+                    }
+                    let mut index = 0u32;
+                    for (label, choice) in choices {
+                        let item = environment.CreateContextMenuItem(
+                            &HSTRING::from(label.as_str()),
+                            None::<&::windows::Win32::System::Com::IStream>,
+                            COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND,
+                        )?;
+                        let pick = on_pick.clone();
+                        let selected = CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
+                            pick(choice.clone());
+                            Ok(())
+                        }));
+                        let mut token = 0i64;
+                        item.add_CustomItemSelected(&selected, &mut token)?;
+                        menu.InsertValueAtIndex(index, &item)?;
+                        index += 1;
+                    }
+                    let separator = environment.CreateContextMenuItem(
+                        &HSTRING::from(""),
+                        None::<&::windows::Win32::System::Com::IStream>,
+                        COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR,
+                    )?;
+                    menu.InsertValueAtIndex(index, &separator)?;
+                }
+                Ok(())
+            }));
+            let mut token = 0i64;
+            let _ = core.add_ContextMenuRequested(&handler, &mut token);
+        });
+    }
+
     fn working_set(pid: u32) -> u64 {
         unsafe {
             let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return 0 };
@@ -296,6 +388,7 @@ mod imp {
     pub fn set_color_scheme(_webview: &Webview, _scheme: &str) {}
     pub fn watch_fullscreen(_app: &AppHandle, _webview: &Webview, _on_change: fn(&AppHandle, &Webview, bool)) {}
     pub fn watch_requests(_webview: &Webview, _check: impl Fn(&str, &str, &'static str) -> bool + Send + 'static) {}
+    pub fn extend_context_menu(_webview: &Webview, _on_pick: std::sync::Arc<dyn Fn(super::MenuChoice) + Send + Sync>) {}
     pub fn memory(_webview: &Webview, tx: Sender<Result<Memory, String>>) -> Result<(), String> {
         let _ = tx.send(Err("Only on Windows".into()));
         Ok(())

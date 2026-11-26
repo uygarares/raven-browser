@@ -118,3 +118,36 @@ pub async fn remove_bookmark(app: AppHandle, id: i64) {
     app.state::<Bookmarks>().0.lock().unwrap().retain(|b| b.id != id);
     changed(&app);
 }
+
+/// Renames a bookmark or changes its address (bookmarks page).
+#[tauri::command]
+pub async fn edit_bookmark(app: AppHandle, id: i64, title: String, url: String) -> Result<(), String> {
+    let url = url.trim().to_string();
+    if url.is_empty() {
+        return Err("Adres boş olamaz".into());
+    }
+    {
+        let state = app.state::<Bookmarks>();
+        let mut list = state.0.lock().unwrap();
+        let bookmark = list.iter_mut().find(|b| b.id == id).ok_or("Yer imi bulunamadı")?;
+        bookmark.title = if title.trim().is_empty() { url.clone() } else { title.trim().to_string() };
+        bookmark.url = url;
+    }
+    changed(&app);
+    Ok(())
+}
+
+/// Moves a bookmark to another place in the list (and the bar).
+#[tauri::command]
+pub async fn move_bookmark(app: AppHandle, id: i64, index: usize) {
+    {
+        let state = app.state::<Bookmarks>();
+        let mut list = state.0.lock().unwrap();
+        if let Some(from) = list.iter().position(|b| b.id == id) {
+            let item = list.remove(from);
+            let to = index.min(list.len());
+            list.insert(to, item);
+        }
+    }
+    changed(&app);
+}

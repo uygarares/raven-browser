@@ -367,6 +367,7 @@ pub fn add_sleeping_tab(app: &AppHandle, window: &str, url: &str, title: &str, p
 }
 
 /// A tab as the performance watcher sees it.
+#[allow(dead_code)]
 pub struct TabUse {
     pub id: u32,
     pub window: String,
@@ -632,6 +633,34 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     }
     crate::native::watch_fullscreen(app, &webview, page_fullscreen);
     crate::shield::attach(app, &webview, id);
+    {
+        let app = app.clone();
+        crate::native::extend_context_menu(
+            &webview,
+            std::sync::Arc::new(move |choice| {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let Some(window) = window_of_tab(&app, id) else { return };
+                    match choice {
+                        crate::native::MenuChoice::OpenLink(url) => {
+                            let _ = create_tab_at(&app, &window, &url, false, Place::NextTo(id));
+                        }
+                        crate::native::MenuChoice::Search(text) => {
+                            if let Ok(url) = to_url(&text, &crate::settings::search_url(&app)) {
+                                let _ = create_tab_at(&app, &window, url.as_str(), true, Place::NextTo(id));
+                            }
+                        }
+                        crate::native::MenuChoice::AskAi(text) => {
+                            crate::ai::ask_direct(&app, &window, &format!("Bunu açıkla:\n\n{text}"));
+                        }
+                        crate::native::MenuChoice::Summarize => {
+                            let _ = crate::ai::ask_in(&app, &window, "summarize", None).await;
+                        }
+                    }
+                });
+            }),
+        );
+    }
     windows::tab_created(app, &window_label);
     // Place it as the page card (margins, rounded corners, AI panel, panels open).
     windows::layout(app, &window_label);

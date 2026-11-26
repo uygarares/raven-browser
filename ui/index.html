@@ -292,6 +292,26 @@
     </div>
   </section>
 
+  <!-- Bookmarks page (Ctrl + Shift + O). -->
+  <section id="bookmarks-panel" class="panel" aria-labelledby="bookmarks-title" hidden>
+    <div class="panel-inner">
+      <div class="panel-head">
+        <h1 id="bookmarks-title">Yer imleri</h1>
+        <button class="icon-button panel-close" aria-label="Kapat (Esc)" title="Kapat (Esc)">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <label class="panel-search">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span class="hidden">Yer imlerinde ara</span>
+        <input id="bookmarks-search" type="search" placeholder="Yer imlerinde ara" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="panel-note">Sıralama yer imleri çubuğuyla aynı. Yukarı ve aşağı oklarla yerini değiştirebilirsin</p>
+      <div id="bookmarks-list" class="bookmarks-list"></div>
+      <p id="bookmarks-empty" class="empty" hidden>Henüz yer imi yok. Bir sayfada ★ yıldıza ya da Ctrl + D'ye bas</p>
+    </div>
+  </section>
+
   <!-- Archive: tabs closed by the automatic cleanup. -->
   <section id="archive-panel" class="panel" aria-labelledby="archive-title" hidden>
     <div class="panel-inner">

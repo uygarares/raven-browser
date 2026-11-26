@@ -690,6 +690,7 @@ const panels = {
   downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
   settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings(); showMemory(); loadImportSources(); showDefault(); } },
   archive: { el: document.getElementById("archive-panel"), load: loadArchive },
+  bookmarks: { el: document.getElementById("bookmarks-panel"), load: loadBookmarksPage, focus: document.getElementById("bookmarks-search") },
   extensions: { el: document.getElementById("extensions-panel"), load: loadExtensions },
 };
 let openPanelName = null;
@@ -1190,6 +1191,90 @@ listen("extensions-changed", () => {
   if (openPanelName === "extensions") loadExtensions();
 });
 
+// Bookmarks page: search, rename, change address, move, remove.
+
+const bookmarksList = document.getElementById("bookmarks-list");
+const bookmarksSearch = document.getElementById("bookmarks-search");
+const ICON = {
+  up: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
+  down: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  edit: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  remove: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
+
+function iconButton(html, label, onClick) {
+  const button = document.createElement("button");
+  button.className = "icon-button small";
+  button.innerHTML = html;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+async function loadBookmarksPage() {
+  const all = (await run("get_bookmarks")) || [];
+  const query = bookmarksSearch.value.trim().toLocaleLowerCase("tr");
+  const items = all.filter((b) => !query || b.title.toLocaleLowerCase("tr").includes(query) || b.url.toLowerCase().includes(query));
+  document.getElementById("bookmarks-empty").hidden = all.length > 0;
+  bookmarksList.replaceChildren(
+    ...items.map((bookmark) => {
+      const row = document.createElement("div");
+      row.className = "bookmark-row";
+      const link = document.createElement("button");
+      link.className = "history-link";
+      const mark = document.createElement("span");
+      mark.className = "mark-small";
+      RavenIcons.fill(mark, bookmark.url, bookmark.title);
+      const title = document.createElement("span");
+      title.className = "history-title";
+      title.textContent = bookmark.title;
+      const host = document.createElement("span");
+      host.className = "history-host";
+      host.textContent = RavenIcons.hostOf(bookmark.url);
+      link.append(mark, title, host);
+      link.addEventListener("click", () => {
+        closePanel();
+        run("open_url", { url: bookmark.url, newTab: false });
+      });
+      const index = all.findIndex((b) => b.id === bookmark.id);
+      const actions = document.createElement("div");
+      actions.className = "row-actions";
+      actions.append(
+        iconButton(ICON.up, "Yukarı taşı", () => run("move_bookmark", { id: bookmark.id, index: Math.max(0, index - 1) }).then(loadBookmarksPage)),
+        iconButton(ICON.down, "Aşağı taşı", () => run("move_bookmark", { id: bookmark.id, index: index + 1 }).then(loadBookmarksPage)),
+        iconButton(ICON.edit, "Düzenle", () => {
+          const form = document.createElement("form");
+          form.className = "bookmark-edit";
+          const name = document.createElement("input");
+          name.value = bookmark.title;
+          name.setAttribute("aria-label", "Ad");
+          const url = document.createElement("input");
+          url.value = bookmark.url;
+          url.setAttribute("aria-label", "Adres");
+          const save = document.createElement("button");
+          save.className = "primary";
+          save.textContent = "Kaydet";
+          form.append(name, url, save);
+          form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await run("edit_bookmark", { id: bookmark.id, title: name.value, url: url.value });
+            loadBookmarksPage();
+          });
+          row.replaceChildren(form);
+          name.focus();
+          name.select();
+        }),
+        iconButton(ICON.remove, "Kaldır", () => run("remove_bookmark", { id: bookmark.id }).then(loadBookmarksPage)),
+      );
+      row.append(link, actions);
+      return row;
+    }),
+  );
+}
+bookmarksSearch.addEventListener("input", loadBookmarksPage);
+listenHere("open-bookmarks", () => openPanel("bookmarks"));
+
 // Archive: tabs the automatic cleanup closed.
 
 const archiveList = document.getElementById("archive-list");
@@ -1360,6 +1445,7 @@ function actionFor(event) {
   if (shift) {
     if (key === "tab") return "previous-tab";
     if (key === "b") return "toggle-bookmarks-bar";
+    if (key === "o") return "open-bookmarks";
     return null;
   }
   if (key === "h") return "open-history";

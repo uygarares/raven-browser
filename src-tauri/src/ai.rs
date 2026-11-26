@@ -202,7 +202,14 @@ pub fn prompt(action: &str, question: Option<&str>, title: &str, url: &str, text
 /// and sends the page to the AI.
 #[tauri::command]
 pub async fn ask_ai(app: AppHandle, webview: Webview, action: String, question: Option<String>) -> Result<(), String> {
-    let window = windows::window_of(&webview);
+    ask_in(&app, &windows::window_of(&webview), &action, question).await
+}
+
+/// Sends a window's page to the AI with a quick action.
+pub async fn ask_in(app: &AppHandle, window: &str, action: &str, question: Option<String>) -> Result<(), String> {
+    let app = app.clone();
+    let window = window.to_string();
+    let action = action.to_string();
     let (title, url, text) = {
         let app = app.clone();
         let window = window.clone();
