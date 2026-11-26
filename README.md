@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/raven-logo.png" width="160" alt="Raven logo"></p>
+
 # Raven Browser
 
 A fast, lightweight browser with a liquid glass design, built to use less RAM
