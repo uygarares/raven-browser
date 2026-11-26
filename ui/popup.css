@@ -282,3 +282,6 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .shield-stat { flex: 1; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
 .shield-stat b { display: block; font: 800 17px var(--font); font-variant-numeric: tabular-nums; }
 .shield-stat span { color: var(--text-3); font-size: 11.5px; font-weight: 700; }
+
+/* Toast. */
+.popup.toast { flex-direction: row; align-items: center; justify-content: center; padding: 0 18px; font-weight: 700; text-align: center; }

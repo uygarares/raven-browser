@@ -125,6 +125,7 @@ function drawMenu(data) {
     item("search", "Sayfada bul", "Ctrl+F", action("find"), { disabled: !data.page }),
     item("book", "Okuma görünümü", null, action("reader-mode"), { disabled: !data.page }),
     item("print", "Yazdır", "Ctrl+P", action("print"), { disabled: !data.page }),
+    item("camera", "Ekran görüntüsü al", "Ctrl+Shift+S", action("screenshot"), { disabled: !data.page }),
     item("command", "Komut paleti", "Ctrl+K", action("command-palette")),
     el("hr"),
     item("history", "Geçmiş", "Ctrl+H", action("open-history")),
@@ -429,6 +430,9 @@ const COMMANDS = [
   ["search", "Sayfada bul", "find", "Ctrl+F"],
   ["book", "Okuma görünümü", "reader-mode", ""],
   ["print", "Yazdır", "print", "Ctrl+P"],
+  ["camera", "Ekran görüntüsü al", "screenshot", "Ctrl+Shift+S"],
+  ["download", "Sayfayı kaydet", "save-page", "Ctrl+S"],
+  ["command", "Sayfa kaynağını göster", "view-source", "Ctrl+U"],
   ["star", "Yer imlerine ekle / çıkar", "toggle-bookmark", "Ctrl+D"],
   ["history", "Geçmiş", "open-history", "Ctrl+H"],
   ["star", "Yer imleri", "open-bookmarks", "Ctrl+Shift+O"],
@@ -575,7 +579,13 @@ function drawTabCard(data) {
   );
 }
 
+function drawToast(data) {
+  root.className = "popup toast";
+  root.replaceChildren(el("span", { class: "label", text: data.text }));
+}
+
 const DRAW = {
+  toast: drawToast,
   find: drawFind,
   palette: drawPalette,
   "tab-card": drawTabCard,
@@ -604,7 +614,7 @@ async function show(request) {
   visible = true;
   run("popup_ready");
   // Take the focus (so a click elsewhere closes it) without highlighting a button.
-  if (request.kind !== "suggestions" && request.kind !== "tab-card" && request.kind !== "find" && request.kind !== "palette") root.focus();
+  if (!["suggestions", "tab-card", "find", "palette", "toast"].includes(request.kind)) root.focus();
 }
 
 listen("popup-closed", ({ payload }) => {
@@ -645,7 +655,7 @@ listen("bookmarks-bar", ({ payload }) => {
 // Clicking anywhere else, or Escape, closes it. Suggestions never get focus;
 // the toolbar closes them.
 window.addEventListener("blur", () => {
-  if (visible && current && !["suggestions", "tab-card", "find"].includes(current.kind)) close();
+  if (visible && current && !["suggestions", "tab-card", "find", "toast"].includes(current.kind)) close();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") close();

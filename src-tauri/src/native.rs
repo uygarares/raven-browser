@@ -68,6 +68,18 @@ pub fn short(text: &str) -> String {
     }
 }
 
+/// Takes a PNG picture of what a tab shows. Call it off the main thread.
+pub fn screenshot(webview: &Webview) -> Result<Vec<u8>, String> {
+    let (tx, rx) = mpsc::channel();
+    imp::screenshot(webview, tx)?;
+    rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "No answer".to_string())?
+}
+
+/// Opens WebView2's "Save as" window for the page (Ctrl+S).
+pub fn save_page(webview: &Webview) {
+    imp::save_page(webview);
+}
+
 /// Memory of Raven's browser processes: the total, and per page address
 /// (the renderer that shows that page), in bytes.
 pub struct Memory {
@@ -294,6 +306,51 @@ mod imp {
         });
     }
 
+    pub fn screenshot(webview: &Webview, tx: Sender<Result<Vec<u8>, String>>) -> Result<(), String> {
+        use ::windows::Win32::System::Com::{STATFLAG_NONAME, STATSTG, STREAM_SEEK_SET};
+        use ::windows::Win32::UI::Shell::SHCreateMemStream;
+        use webview2_com::CapturePreviewCompletedHandler;
+        webview
+            .with_webview(move |platform| unsafe {
+                let Some(stream) = SHCreateMemStream(None) else {
+                    let _ = tx.send(Err("No memory stream".into()));
+                    return;
+                };
+                let reply = tx.clone();
+                let reader = stream.clone();
+                let handler = CapturePreviewCompletedHandler::create(Box::new(move |result| {
+                    let bytes = result.and_then(|_| unsafe {
+                        let mut stat = STATSTG::default();
+                        reader.Stat(&mut stat, STATFLAG_NONAME)?;
+                        reader.Seek(0, STREAM_SEEK_SET, None)?;
+                        let mut bytes = vec![0u8; stat.cbSize as usize];
+                        let mut read = 0u32;
+                        reader.Read(bytes.as_mut_ptr() as *mut _, bytes.len() as u32, Some(&mut read)).ok()?;
+                        bytes.truncate(read as usize);
+                        Ok(bytes)
+                    });
+                    let _ = reply.send(bytes.map_err(|e| e.to_string()));
+                    Ok(())
+                }));
+                let started = platform.controller().CoreWebView2().and_then(|core| {
+                    core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, &stream, &handler)
+                });
+                if let Err(error) = started {
+                    let _ = tx.send(Err(error.to_string()));
+                }
+            })
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn save_page(webview: &Webview) {
+        use webview2_com::ShowSaveAsUICompletedHandler;
+        let _ = webview.with_webview(|platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_25>()) else { return };
+            let handler = ShowSaveAsUICompletedHandler::create(Box::new(|_, _| Ok(())));
+            let _ = core.ShowSaveAsUI(&handler);
+        });
+    }
+
     fn working_set(pid: u32) -> u64 {
         unsafe {
             let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return 0 };
@@ -389,6 +446,11 @@ mod imp {
     pub fn watch_fullscreen(_app: &AppHandle, _webview: &Webview, _on_change: fn(&AppHandle, &Webview, bool)) {}
     pub fn watch_requests(_webview: &Webview, _check: impl Fn(&str, &str, &'static str) -> bool + Send + 'static) {}
     pub fn extend_context_menu(_webview: &Webview, _on_pick: std::sync::Arc<dyn Fn(super::MenuChoice) + Send + Sync>) {}
+    pub fn screenshot(_webview: &Webview, tx: Sender<Result<Vec<u8>, String>>) -> Result<(), String> {
+        let _ = tx.send(Err("Only on Windows".into()));
+        Ok(())
+    }
+    pub fn save_page(_webview: &Webview) {}
     pub fn memory(_webview: &Webview, tx: Sender<Result<Memory, String>>) -> Result<(), String> {
         let _ = tx.send(Err("Only on Windows".into()));
         Ok(())

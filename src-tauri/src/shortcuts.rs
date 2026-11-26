@@ -52,6 +52,12 @@ pub enum Action {
     OpenArchive,
     /// Ctrl+Shift+O.
     OpenBookmarks,
+    /// Ctrl+S.
+    SavePage,
+    /// Ctrl+U.
+    ViewSource,
+    /// Ctrl+Shift+S: a picture of the page, saved to Downloads.
+    Screenshot,
     /// Put the other tabs to sleep now.
     SleepOtherTabs,
 }
@@ -76,6 +82,9 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
         (0x41, true) => Action::TabSearch,       // Shift+A
         (0x49, true) => Action::DevTools,        // Shift+I
         (0x4F, true) => Action::OpenBookmarks,   // Shift+O
+        (0x53, false) => Action::SavePage,       // S
+        (0x53, true) => Action::Screenshot,      // Shift+S
+        (0x55, false) => Action::ViewSource,     // U
         (0x54, false) => Action::NewTab,      // T
         (0x54, true) => Action::ReopenTab,    // Shift+T
         (0x4E, false) => Action::NewWindow,   // N
@@ -194,6 +203,19 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
                 .ok_or_else(|| "No page".to_string())
                 .and_then(|tab| tab.print().map_err(|e| e.to_string())),
             Action::ReaderMode => crate::reader::toggle(&app, window),
+            Action::SavePage => {
+                if let Some(tab) = tabs::active_webview(&app, window) {
+                    crate::native::save_page(&tab);
+                }
+                Ok(())
+            }
+            Action::ViewSource => match tabs::active_page(&app, window) {
+                Some((url, _)) if url.starts_with("http") => {
+                    tabs::open_tab(&app, window, &format!("view-source:{url}")).map(|_| ())
+                }
+                _ => Ok(()),
+            },
+            Action::Screenshot => screenshot(&app, window).await,
             Action::OpenBookmarks => {
                 tell_toolbar(&app, window, "open-bookmarks");
                 Ok(())
@@ -211,6 +233,26 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
             eprintln!("Action {action:?} failed: {error}");
         }
     });
+}
+
+/// Saves a picture of the active page to Downloads and opens it in a new tab.
+async fn screenshot(app: &AppHandle, window: &str) -> Result<(), String> {
+    let tab = tabs::active_webview(app, window).ok_or("No page")?;
+    let png = tauri::async_runtime::spawn_blocking(move || crate::native::screenshot(&tab))
+        .await
+        .map_err(|e| e.to_string())??;
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let name = format!("Raven ekran görüntüsü {}.png", crate::storage::now_ms());
+    let path = dir.join(&name);
+    std::fs::write(&path, png).map_err(|e| e.to_string())?;
+    toast(app, window, &format!("Ekran görüntüsü İndirilenler'e kaydedildi: {name}"));
+    let url = tauri::Url::from_file_path(&path).map_err(|_| "Bad path")?;
+    tabs::open_tab(app, window, url.as_str()).map(|_| ())
+}
+
+/// A short message at the bottom of a window.
+pub fn toast(app: &AppHandle, window: &str, text: &str) {
+    let _ = app.emit("toast", serde_json::json!({ "window": window, "text": text }));
 }
 
 #[tauri::command]

@@ -97,7 +97,7 @@ function activeTab() {
 
 // The ⋮ menu: new tab, new windows, zoom, history, downloads, bookmarks bar, settings.
 const MENU_WIDTH = 328;
-const MENU_HEIGHT = 16 * 34 + 4 * 11 + 14;
+const MENU_HEIGHT = 17 * 34 + 4 * 11 + 14;
 popupButton(document.getElementById("menu-button"), "menu", (rect) => {
   const tab = activeTab();
   const page = Boolean(tab && tab.url !== "");
@@ -1420,6 +1420,21 @@ function openPalette(mode) {
 listenHere("open-palette", () => openPalette("all"));
 listenHere("open-tab-search", () => openPalette("tabs"));
 
+// Short messages at the bottom of the page ("Ekran görüntüsü kaydedildi"),
+// drawn by the popup so they show over the page.
+let toastTimer = null;
+function showToast(text) {
+  if (popupKind && popupKind !== "toast") return;
+  const page = pageRect();
+  const width = Math.min(520, page.width - 40);
+  openPopup("toast", { text }, { x: page.left + (page.width - width) / 2, y: page.bottom - 64, width, height: 46, focus: false });
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    if (popupKind === "toast") closePopup();
+  }, 3500);
+}
+listenHere("toast", (payload) => showToast(payload.text));
+
 // Game mode badge.
 listen("game-mode", ({ payload }) => document.body.classList.toggle("game-mode", payload));
 
@@ -1434,6 +1449,8 @@ function actionFor(event) {
   if (key === " " && !shift) return "toggle-ai";
   if (key === "f" && !shift) return "find";
   if (key === "p" && !shift) return "print";
+  if (key === "s") return shift ? "screenshot" : "save-page";
+  if (key === "u" && !shift) return "view-source";
   if (key === "k" && !shift) return "command-palette";
   if (key === "a" && shift) return "tab-search";
   if (key === "i" && shift) return "dev-tools";
