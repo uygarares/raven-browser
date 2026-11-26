@@ -66,6 +66,13 @@ pub struct Settings {
     pub theme_id: String,
     /// Delete history, cookies and site data when Raven closes (like Brave).
     pub clear_on_exit: bool,
+    /// Sync through the user's own Supabase project (address and public key).
+    pub sync_url: String,
+    pub sync_key: String,
+    /// The encryption key made from the sync password (never the password),
+    /// and the row id derived from it.
+    pub sync_secret: String,
+    pub sync_id: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -121,6 +128,10 @@ impl Default for Settings {
             panel_sites: Vec::new(),
             theme_id: "raven".into(),
             clear_on_exit: false,
+            sync_url: String::new(),
+            sync_key: String::new(),
+            sync_secret: String::new(),
+            sync_id: String::new(),
         }
     }
 }

@@ -124,6 +124,7 @@
       <a href="#set-shield">Gizlilik ve güvenlik</a>
       <a href="#set-speed">Performans</a>
       <a href="#set-import">İçe aktar</a>
+      <a href="#set-sync">Senkronizasyon</a>
       <a href="#set-backup">Yedekle</a>
       <a href="#set-default">Varsayılan tarayıcı</a>
       <a href="#set-about">Hakkında</a>
@@ -291,6 +292,37 @@
         <div class="setting">
           <span><span class="setting-name">Başka tarayıcıdan taşı</span><span id="import-status" class="setting-note">Yer imleri ve geçmiş kopyalanır</span></span>
           <div class="button-row" id="import-buttons"></div>
+        </div>
+      </section>
+
+      <section id="set-sync" class="settings-group">
+        <h2>Senkronizasyon</h2>
+        <div class="setting sync-setting">
+          <span><span class="setting-name">Kendi Supabase hesabınla eşitle</span><span id="sync-status" class="setting-note">Yer imleri, geçmiş ve ayarlar bilgisayarların arasında eşitlenir. Veriler bu bilgisayarda şifrelenir, şifren hiçbir yere gitmez</span></span>
+        </div>
+        <div class="setting sync-form" id="sync-form">
+          <input id="sync-url" type="url" placeholder="Supabase adresi (https://xxxx.supabase.co)" autocomplete="off" spellcheck="false">
+          <input id="sync-key" type="text" placeholder="anon public anahtarı" autocomplete="off" spellcheck="false">
+          <input id="sync-password" type="password" placeholder="Eşitleme şifresi (her bilgisayarda aynı)" autocomplete="new-password">
+          <div class="button-row">
+            <button id="sync-setup" class="secondary">Kurulum adımları</button>
+            <button id="sync-connect" class="primary">Bağlan ve eşitle</button>
+          </div>
+        </div>
+        <div class="setting" id="sync-connected" hidden>
+          <span><span class="setting-name">Bağlı</span><span id="sync-last" class="setting-note"></span></span>
+          <div class="button-row">
+            <button id="sync-now" class="primary">Şimdi eşitle</button>
+            <button id="sync-disconnect" class="secondary">Bağlantıyı kes</button>
+          </div>
+        </div>
+        <div class="setting sync-help" id="sync-help" hidden>
+          <span>
+            <span class="setting-name">Kurulum (bir kere, 5 dakika)</span>
+            <span class="setting-note">1. supabase.com'da ücretsiz hesap aç ve yeni bir proje oluştur<br>2. Projede SQL Editor'ü aç, aşağıdaki kodu yapıştırıp Run'a bas<br>3. Project Settings > API sayfasından Project URL ve anon public anahtarını kopyala, yukarıya yapıştır<br>4. Bir eşitleme şifresi seç. Diğer bilgisayarlarda da aynı adres, anahtar ve şifreyi gir<br>Şifreni unutursan eşitlenen veriler açılamaz</span>
+            <pre id="sync-sql" class="sync-sql"></pre>
+          </span>
+          <button id="sync-copy" class="secondary">Kodu kopyala</button>
         </div>
       </section>
 
@@ -503,6 +535,7 @@
 
   <script src="favicon.js"></script>
   <script src="themes.js"></script>
+  <script src="sync.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

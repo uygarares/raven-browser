@@ -789,7 +789,7 @@ historyClear.addEventListener("click", async () => {
 const panels = {
   history: { el: historyPanel, load: loadHistory, focus: historySearch },
   downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
-  settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings(); showMemory(); loadImportSources(); showDefault(); } },
+  settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings().then(showSync); showMemory(); loadImportSources(); showDefault(); } },
   archive: { el: document.getElementById("archive-panel"), load: loadArchive },
   welcome: { el: document.getElementById("welcome-panel"), load: loadWelcome },
   themes: { el: document.getElementById("themes-panel"), load: loadThemes },
@@ -1208,6 +1208,101 @@ document.getElementById("backup-import").addEventListener("change", async (event
     backupStatus.textContent = String(error);
   }
   event.target.value = "";
+});
+
+// Sync with the user's own Supabase project (sync.js does the encryption).
+const syncStatus = document.getElementById("sync-status");
+const syncLast = document.getElementById("sync-last");
+document.getElementById("sync-sql").textContent = RavenSync.SETUP_SQL;
+let syncing = false;
+
+function syncConfigured() {
+  return Boolean(settings?.syncUrl && settings?.syncKey && settings?.syncSecret && settings?.syncId);
+}
+function showSync() {
+  const on = syncConfigured();
+  document.getElementById("sync-form").hidden = on;
+  document.getElementById("sync-connected").hidden = !on;
+  const last = Number(localStorage.getItem("raven-sync-last") || 0);
+  syncLast.textContent = last ? `Son eşitleme: ${new Date(last).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" })}` : "Henüz eşitlenmedi";
+}
+
+/// Pulls what other computers saved, merges it here, then saves the result.
+async function syncNow(quiet = false) {
+  if (!syncConfigured() || syncing) return;
+  syncing = true;
+  if (!quiet) syncLast.textContent = "Eşitleniyor…";
+  try {
+    const remote = await RavenSync.pull(settings);
+    if (remote?.data) {
+      const text = await RavenSync.decrypt(settings.syncSecret, remote.data);
+      await invoke("import_backup", { text });
+    }
+    const mine = await invoke("get_sync_data");
+    await RavenSync.push(settings, await RavenSync.encrypt(settings.syncSecret, mine));
+    localStorage.setItem("raven-sync-last", String(Date.now()));
+    showSync();
+  } catch (error) {
+    syncLast.textContent = String(error).includes("OperationError")
+      ? "Şifre bu hesaptaki verilerle uyuşmuyor"
+      : `Eşitlenemedi: ${String(error).slice(0, 160)}`;
+  } finally {
+    syncing = false;
+  }
+}
+
+document.getElementById("sync-setup").addEventListener("click", () => {
+  const help = document.getElementById("sync-help");
+  help.hidden = !help.hidden;
+});
+document.getElementById("sync-copy").addEventListener("click", async (event) => {
+  await navigator.clipboard.writeText(RavenSync.SETUP_SQL);
+  event.currentTarget.textContent = "Kopyalandı";
+});
+document.getElementById("sync-connect").addEventListener("click", async (event) => {
+  const url = document.getElementById("sync-url").value.trim();
+  const key = document.getElementById("sync-key").value.trim();
+  const password = document.getElementById("sync-password").value;
+  if (!/^https:\/\/.+/.test(url) || !key) {
+    syncStatus.textContent = "Supabase adresini ve anon anahtarını gir";
+    return;
+  }
+  if (password.length < 8) {
+    syncStatus.textContent = "Eşitleme şifresi en az 8 karakter olmalı";
+    return;
+  }
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = "Bağlanıyor…";
+  try {
+    const { secret, id } = await RavenSync.derive(password);
+    await saveSettings({ syncUrl: url, syncKey: key, syncSecret: secret, syncId: id });
+    document.getElementById("sync-password").value = "";
+    showSync();
+    await syncNow();
+  } finally {
+    button.disabled = false;
+    button.textContent = "Bağlan ve eşitle";
+  }
+});
+document.getElementById("sync-now").addEventListener("click", () => syncNow());
+document.getElementById("sync-disconnect").addEventListener("click", async () => {
+  await saveSettings({ syncUrl: "", syncKey: "", syncSecret: "", syncId: "" });
+  showSync();
+});
+
+// Automatic: soon after start, every 15 minutes, and after bookmarks change.
+// Several windows share the work: only one syncs within a minute.
+function autoSync() {
+  const last = Number(localStorage.getItem("raven-sync-last") || 0);
+  if (Date.now() - last > 60 * 1000) syncNow(true);
+}
+setTimeout(autoSync, 12000);
+setInterval(autoSync, 15 * 60 * 1000);
+let bookmarkSyncTimer = null;
+listen("bookmarks", () => {
+  clearTimeout(bookmarkSyncTimer);
+  bookmarkSyncTimer = setTimeout(() => syncNow(true), 20000);
 });
 
 // Default browser.

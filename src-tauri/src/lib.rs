@@ -116,6 +116,7 @@ pub fn run() {
             previews::get_tab_preview,
             backup::export_backup,
             backup::import_backup,
+            backup::get_sync_data,
             import::get_import_sources,
             import::import_browser,
             shield::get_shield,
