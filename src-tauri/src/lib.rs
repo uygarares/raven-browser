@@ -58,6 +58,7 @@ pub fn run() {
             tabs::move_tab_command,
             tabs::tab_action,
             tabs::group_command,
+            tabs::media_command,
             tabs::open_url,
             tabs::navigate,
             tabs::go_back,

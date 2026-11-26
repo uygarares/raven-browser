@@ -1403,6 +1403,18 @@ pub async fn tab_action(app: AppHandle, id: u32, action: String) -> Result<(), S
     }
 }
 
+/// Pauses or plays the videos and sounds of a tab (media button in the toolbar).
+#[tauri::command]
+pub async fn media_command(app: AppHandle, id: u32, action: String) -> Result<(), String> {
+    let tab = app.get_webview(&label(id)).ok_or("Tab is asleep")?;
+    let script = match action.as_str() {
+        "pause" => r#"(() => { window.__ravenPaused = [...document.querySelectorAll("video, audio")].filter((m) => !m.paused); window.__ravenPaused.forEach((m) => m.pause()); })()"#,
+        "play" => r#"(() => { (window.__ravenPaused || [...document.querySelectorAll("video, audio")].slice(0, 1)).forEach((m) => m.play().catch(() => {})); window.__ravenPaused = null; })()"#,
+        _ => return Err("Unknown media action".into()),
+    };
+    tab.eval(script).map_err(|e| e.to_string())
+}
+
 /// Opens an address from a bookmark, the history or a suggestion, here or in a new tab.
 #[tauri::command]
 pub async fn open_url(app: AppHandle, webview: Webview, url: String, new_tab: bool) -> Result<(), String> {

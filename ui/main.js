@@ -177,6 +177,29 @@ popupButton(document.getElementById("extensions-button"), "extensions", async (r
   openPopup("extensions", { items }, { x: rect.right - width, y: rect.bottom + 4, width, height: 40 + rows * 44 + 11 + 34 + 14 });
 });
 
+// Media button: shows while a tab plays sound (or was paused from here).
+const mediaButton = document.getElementById("media-button");
+const pausedHere = new Set();
+function mediaTabs() {
+  return state.tabs.filter((tab) => tab.audible || pausedHere.has(tab.id));
+}
+function showMediaButton() {
+  for (const id of [...pausedHere]) if (!state.tabs.some((tab) => tab.id === id)) pausedHere.delete(id);
+  const playing = state.tabs.some((tab) => tab.audible);
+  mediaButton.hidden = mediaTabs().length === 0;
+  mediaButton.classList.toggle("playing", playing);
+}
+popupButton(mediaButton, "media", (rect) => {
+  const items = mediaTabs().map((tab) => ({ id: tab.id, title: tab.title, url: tab.url, playing: tab.audible, muted: tab.muted }));
+  const width = 340;
+  openPopup("media", { items }, { x: rect.right - width, y: rect.bottom + 4, width, height: 40 + items.length * 62 + 14 });
+});
+listenHere("media-paused", (payload) => {
+  if (payload.paused) pausedHere.add(payload.id);
+  else pausedHere.delete(payload.id);
+  showMediaButton();
+});
+
 // Address bar suggestions from history and bookmarks.
 
 let typed = ""; // What the user typed (without the completed part).
@@ -535,6 +558,7 @@ listenHere("tabs", (payload) => {
   state = payload;
   render();
   if (switched) showShieldCount();
+  showMediaButton();
 });
 
 run("get_tabs").then((payload) => {

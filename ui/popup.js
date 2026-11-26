@@ -52,6 +52,9 @@ const ICONS = {
   command: svg('<path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/>'),
   archive: svg('<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>'),
   moon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+  play: svg('<path d="M7 5l12 7-12 7z"/>', 14),
+  pause: svg('<path d="M8 5v14M16 5v14"/>', 14),
+  music: svg('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'),
   chevronUp: svg('<path d="M6 15l6-6 6 6"/>', 14),
   chevronDown: svg('<path d="M6 9l6 6 6-6"/>', 14),
   tab: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h8V5"/>'),
@@ -634,12 +637,50 @@ function drawGroupMenu(data) {
   }, 0);
 }
 
+// Media: tabs playing sound, with pause/play, mute and "go to tab".
+function drawMedia(data) {
+  const rows = data.items.map((item) => {
+    const mark = el("span", { class: "ext-icon" });
+    RavenIcons.fill(mark, item.url, item.title);
+    let playing = item.playing;
+    const play = el("button", { class: "step", title: playing ? "Duraklat" : "Oynat", html: playing ? ICONS.pause : ICONS.play });
+    play.addEventListener("click", async () => {
+      await run("media_command", { id: item.id, action: playing ? "pause" : "play" });
+      playing = !playing;
+      play.innerHTML = playing ? ICONS.pause : ICONS.play;
+      play.title = playing ? "Duraklat" : "Oynat";
+      emitPaused(item.id, !playing);
+    });
+    const mute = el("button", { class: "step", title: item.muted ? "Sesi aç" : "Sessize al", html: item.muted ? ICONS.muted : ICONS.sound });
+    mute.addEventListener("click", () => {
+      item.muted = !item.muted;
+      run("tab_action", { id: item.id, action: item.muted ? "mute" : "unmute" });
+      mute.innerHTML = item.muted ? ICONS.muted : ICONS.sound;
+    });
+    const text = el("button", { class: "media-text", title: "Sekmeye git" }, [
+      el("span", { class: "media-title", text: item.title }),
+      el("span", { class: "media-site", text: shortUrl(item.url).split("/")[0] }),
+    ]);
+    text.addEventListener("click", () => {
+      run("switch_tab", { id: item.id });
+      close();
+    });
+    return el("div", { class: "media-row" }, [mark, text, play, mute]);
+  });
+  root.className = "popup";
+  root.replaceChildren(el("div", { class: "box-head", html: ICONS.music }, [el("span", { class: "label", text: "Çalan medya" })]), ...rows);
+}
+function emitPaused(id, paused) {
+  window.__TAURI__.event.emit("media-paused", { window: WINDOW, id, paused });
+}
+
 function drawToast(data) {
   root.className = "popup toast";
   root.replaceChildren(el("span", { class: "label", text: data.text }));
 }
 
 const DRAW = {
+  media: drawMedia,
   "group-menu": drawGroupMenu,
   toast: drawToast,
   find: drawFind,

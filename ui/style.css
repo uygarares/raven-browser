@@ -837,3 +837,8 @@ body.vertical-tabs .tab[data-color]:not([data-color=""])::before { left: -6px; r
 .welcome-status { min-height: 18px; color: var(--text-2) !important; }
 .button-row.start { justify-content: flex-start; }
 .welcome-start { height: 48px; margin-top: 20px; padding: 0 40px; border-radius: 14px; font-size: 15px; }
+
+/* Media button: pulses gently while something plays. */
+.media-button.playing { color: var(--accent); }
+.media-button.playing svg { animation: beat 1.6s ease-in-out infinite; }
+@keyframes beat { 50% { transform: scale(1.12); } }
