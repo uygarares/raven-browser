@@ -41,14 +41,6 @@ function closeTab(id) {
 const SEARCH_ICON =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
 
-function siteLetter(tab) {
-  try {
-    const host = new URL(tab.url).hostname.replace(/^www\./, "");
-    return host.charAt(0).toUpperCase();
-  } catch {
-    return (tab.title || "?").charAt(0).toUpperCase();
-  }
-}
 
 function render() {
   tabsEl.replaceChildren(
@@ -66,7 +58,7 @@ function render() {
       if (isNewTabPage) {
         icon.innerHTML = SEARCH_ICON;
       } else if (!tab.loading) {
-        icon.textContent = siteLetter(tab);
+        RavenIcons.fill(icon, tab.url, tab.title);
       }
       el.addEventListener("mousedown", (event) => {
         // Middle click closes the tab, like other browsers.
@@ -123,13 +115,6 @@ function renderStar() {
   star.title = label;
 }
 
-function letterOf(url, fallback) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "").charAt(0).toUpperCase();
-  } catch {
-    return (fallback || "?").charAt(0).toUpperCase();
-  }
-}
 
 function renderBookmarks() {
   bar.replaceChildren(
@@ -140,7 +125,7 @@ function renderBookmarks() {
       const mark = document.createElement("span");
       mark.className = "mark-small";
       mark.setAttribute("aria-hidden", "true");
-      mark.textContent = letterOf(bookmark.url, bookmark.title);
+      RavenIcons.fill(mark, bookmark.url, bookmark.title);
       const title = document.createElement("span");
       title.className = "bookmark-title";
       title.textContent = bookmark.title;
@@ -178,6 +163,20 @@ function showBookmarksBar(show) {
 }
 listen("bookmarks-bar", ({ payload }) => showBookmarksBar(payload));
 invoke("get_bookmarks_bar").then(showBookmarksBar);
+
+// Most visited sites, for the new tab page's shortcuts until the user picks
+// their own. The new tab page cannot ask Raven, so it reads this copy.
+async function refreshTopSites() {
+  const sites = await run("get_top_sites");
+  if (!sites) return;
+  try {
+    localStorage.setItem("raven-top-sites", JSON.stringify(sites));
+  } catch (error) {
+    console.error(error);
+  }
+}
+refreshTopSites();
+setInterval(refreshTopSites, 30000);
 
 // History panel
 
@@ -236,7 +235,7 @@ async function loadHistory() {
     const mark = document.createElement("span");
     mark.className = "mark-small";
     mark.setAttribute("aria-hidden", "true");
-    mark.textContent = letterOf(entry.url, entry.title);
+    RavenIcons.fill(mark, entry.url, entry.title);
     const title = document.createElement("span");
     title.className = "history-title";
     title.textContent = entry.title || entry.url;

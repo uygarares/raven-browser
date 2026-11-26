@@ -121,6 +121,7 @@ pub fn run() {
             bookmarks::toggle_bookmark,
             bookmarks::remove_bookmark,
             history::get_history,
+            history::get_top_sites,
             history::remove_history_entry,
             history::clear_history,
             set_full_window,

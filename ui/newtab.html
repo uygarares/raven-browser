@@ -18,14 +18,48 @@
       <kbd>Ctrl L</kbd>
     </form>
 
-    <nav class="shortcuts" aria-label="Kısayollar">
-      <a class="shortcut" href="https://www.youtube.com/"><span class="mark" aria-hidden="true">Y</span><span>YouTube</span></a>
-      <a class="shortcut" href="https://f2pclub.app/"><span class="mark" aria-hidden="true">F</span><span>F2P Club</span></a>
-      <a class="shortcut" href="https://github.com/"><span class="mark" aria-hidden="true">G</span><span>GitHub</span></a>
-      <a class="shortcut" href="https://claude.ai/"><span class="mark" aria-hidden="true">C</span><span>Claude</span></a>
-      <a class="shortcut" href="https://www.twitch.tv/"><span class="mark" aria-hidden="true">T</span><span>Twitch</span></a>
-    </nav>
+    <!-- Shortcuts: the most visited sites, until you add, edit or remove one. -->
+    <nav id="shortcuts" class="shortcuts" aria-label="Kısayollar"></nav>
   </main>
+
+  <!-- Small menu on a shortcut: edit or remove. -->
+  <div id="menu" class="menu" role="menu" hidden>
+    <button id="menu-edit" role="menuitem">Düzenle</button>
+    <button id="menu-remove" role="menuitem">Kaldır</button>
+  </div>
+
+  <!-- Add or edit a shortcut. -->
+  <dialog id="editor" class="editor" aria-labelledby="editor-title">
+    <form id="editor-form" method="dialog">
+      <h2 id="editor-title">Kısayol ekle</h2>
+      <label>
+        <span>Ad</span>
+        <input id="editor-name" type="text" autocomplete="off" spellcheck="false" placeholder="Örneğin F2P Club">
+      </label>
+      <label>
+        <span>Adres</span>
+        <input id="editor-url" type="text" autocomplete="off" spellcheck="false" placeholder="f2pclub.app" required>
+      </label>
+      <div class="editor-actions">
+        <button type="button" id="editor-cancel" class="secondary">İptal</button>
+        <button type="submit" class="primary">Kaydet</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="shortcut-template">
+    <div class="shortcut">
+      <a class="shortcut-link">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="shortcut-name"></span>
+      </a>
+      <button class="more" aria-label="Kısayol seçenekleri" title="Seçenekler">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+      </button>
+    </div>
+  </template>
+
+  <script src="favicon.js"></script>
   <script src="newtab.js"></script>
 </body>
 </html>

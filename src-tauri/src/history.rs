@@ -115,6 +115,73 @@ pub fn search(entries: &[Entry], query: &str, limit: usize) -> Vec<Entry> {
         .collect()
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct TopSite {
+    pub url: String,
+    pub title: String,
+}
+
+/// The most visited sites, one per website, most visited first. Used for the
+/// shortcuts on the new tab page until the user picks their own.
+pub fn top_sites(entries: &[Entry], limit: usize) -> Vec<TopSite> {
+    use std::collections::HashMap;
+    // site -> (visits, latest visit, a title)
+    let mut sites: HashMap<String, (usize, i64, String)> = HashMap::new();
+    for entry in entries {
+        let Ok(url) = entry.url.parse::<tauri::Url>() else { continue };
+        let Some(host) = url.host_str() else { continue };
+        let home = format!("{}://{}/", url.scheme(), host);
+        let site = sites.entry(home).or_insert((0, 0, String::new()));
+        site.0 += 1;
+        if entry.time >= site.1 {
+            site.1 = entry.time;
+        }
+        // Prefer the title of the home page, else any title.
+        let is_home = url.path() == "/" && url.query().is_none();
+        if !entry.title.is_empty() && (is_home || site.2.is_empty()) {
+            site.2 = entry.title.clone();
+        }
+    }
+    let mut ranked: Vec<_> = sites.into_iter().collect();
+    ranked.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then(b.1 .1.cmp(&a.1 .1)));
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|(url, (_, _, title))| TopSite { title: short_title(&title, &url), url })
+        .collect()
+}
+
+/// "YouTube - Broadcast Yourself" becomes "YouTube"; no title becomes the site name.
+fn short_title(title: &str, url: &str) -> String {
+    let first = title
+        .split([' ', ' '])
+        .collect::<Vec<_>>()
+        .join(" ");
+    let first = first
+        .split(" - ")
+        .next()
+        .unwrap_or("")
+        .split(" | ")
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if !first.is_empty() {
+        return first;
+    }
+    url.parse::<tauri::Url>()
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string()))
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn get_top_sites(app: AppHandle) -> Vec<TopSite> {
+    let history = app.state::<History>();
+    let entries = history.entries.lock().unwrap();
+    top_sites(&entries, 8)
+}
+
 #[tauri::command]
 pub async fn get_history(app: AppHandle, query: String) -> Vec<Entry> {
     let history = app.state::<History>();
@@ -144,6 +211,21 @@ mod tests {
 
     fn entry(url: &str, title: &str, time: i64) -> Entry {
         Entry { url: url.into(), title: title.into(), time }
+    }
+
+    #[test]
+    fn top_sites_counts_visits_per_site() {
+        let entries = vec![
+            entry("https://www.youtube.com/watch?v=1", "Video - YouTube", 1),
+            entry("https://www.youtube.com/", "YouTube", 2),
+            entry("https://github.com/x", "x · GitHub", 3),
+            entry("https://www.youtube.com/watch?v=2", "Other - YouTube", 4),
+        ];
+        let top = super::top_sites(&entries, 8);
+        assert_eq!(top[0].url, "https://www.youtube.com/");
+        assert_eq!(top[0].title, "YouTube");
+        assert_eq!(top[1].url, "https://github.com/");
+        assert_eq!(top.len(), 2);
     }
 
     #[test]

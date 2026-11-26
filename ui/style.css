@@ -353,3 +353,7 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
 .history-row:hover .history-remove, .history-remove:focus-visible { opacity: 1; }
 
 .empty { margin-top: 32px; color: var(--text-3); font-size: 14px; }
+
+/* Site logos inside the small marks */
+.tab-icon.has-logo, .mark-small.has-logo { background: transparent; }
+.tab-icon img, .mark-small img { width: 100%; height: 100%; object-fit: contain; border-radius: 2px; }
