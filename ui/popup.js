@@ -52,6 +52,7 @@ const ICONS = {
   command: svg('<path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/>'),
   archive: svg('<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>'),
   moon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+  split: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'),
   play: svg('<path d="M7 5l12 7-12 7z"/>', 14),
   pause: svg('<path d="M8 5v14M16 5v14"/>', 14),
   music: svg('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'),
@@ -161,6 +162,11 @@ function drawTabMenu(data) {
   root.className = "popup compact";
   root.replaceChildren(
     item("plus", "Sağa yeni sekme", null, tab("new-tab-right")),
+    ...(data.split != null
+      ? [item("split", "Yan yana görünümü kapat", null, tab("unsplit"))]
+      : data.active
+        ? []
+        : [item("split", "Yan yana aç", null, tab("split"))]),
     el("hr"),
     item("reload", "Yeniden yükle", "Ctrl+R", tab("reload")),
     item("copy", "Kopyasını aç", null, tab("duplicate")),
@@ -454,6 +460,7 @@ const COMMANDS = [
   ["puzzle", "Uzantılar", "open-extensions", ""],
   ["archive", "Arşiv", "open-archive", ""],
   ["moon", "Diğer sekmeleri uyut", "sleep-other-tabs", ""],
+  ["split", "Yan yana görünümü kapat", "unsplit", ""],
   ["window", "Tam ekran", "fullscreen", "F11"],
   ["settings", "Ayarlar", "open-settings", ""],
   ["command", "Geliştirici araçları", "dev-tools", "F12"],

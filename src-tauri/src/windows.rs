@@ -47,6 +47,32 @@ struct WindowState {
     ai_panel: bool,
     /// F11 or a page in full screen (a video): no toolbar, no margins.
     fullscreen: bool,
+    /// Split view: this tab shows at the right of the active one.
+    split: Option<u32>,
+}
+
+/// The two halves of the page card in split view (8 px apart).
+pub fn split_halves(page: Rect) -> (Rect, Rect) {
+    let gap = PAGE_MARGIN;
+    let half = ((page.width - gap) / 2.0).max(0.0);
+    (
+        Rect { width: half, ..page },
+        Rect { x: page.x + half + gap, width: (page.width - half - gap).max(0.0), ..page },
+    )
+}
+
+pub fn split_of(app: &AppHandle, window: &str) -> Option<u32> {
+    with_windows(app, |states| states.get(window).and_then(|s| s.split))
+}
+
+/// Starts or ends split view in a window.
+pub fn set_split(app: &AppHandle, window: &str, tab: Option<u32>) {
+    with_windows(app, |states| {
+        if let Some(state) = states.get_mut(window) {
+            state.split = tab;
+        }
+    });
+    layout(app, window);
 }
 
 /// Space around the page card, and its corner radius (logical pixels).
@@ -250,11 +276,14 @@ pub fn layout(app: &AppHandle, window: &str) {
     }
     let (page, panel) = page_layout((size.width, size.height), toolbar_height(), left_space(), state.ai_panel, state.fullscreen);
     let radius = if state.fullscreen { 0.0 } else { PAGE_RADIUS };
+    let split_label = state.split.filter(|_| !state.fullscreen).map(|id| format!("tab-{id}"));
+    let (left, right) = if split_label.is_some() { split_halves(page) } else { (page, page) };
     for webview in tabs::webviews_of(app, window) {
-        let _ = webview.set_position(LogicalPosition::new(page.x, page.y));
+        let rect = if Some(webview.label()) == split_label.as_deref() { right } else { left };
+        let _ = webview.set_position(LogicalPosition::new(rect.x, rect.y));
         // Tabs sit on top of the toolbar webview, so while the toolbar fills the
         // window (history, settings) they are shrunk to nothing, not only hidden.
-        let (width, height) = if full { (0.0, 0.0) } else { (page.width, page.height) };
+        let (width, height) = if full { (0.0, 0.0) } else { (rect.width, rect.height) };
         let _ = webview.set_size(LogicalSize::new(width, height));
         round_corners(&webview, (width, height), radius);
     }
@@ -559,6 +588,8 @@ mod tests {
         assert!(page_layout((600.0, 800.0), 84.0, 8.0, true, false).1.is_none());
         let (page, _) = page_layout((1280.0, 800.0), 84.0, 8.0, true, true);
         assert_eq!(page, Rect { x: 0.0, y: 0.0, width: 1280.0, height: 800.0 });
+        let (left, right) = split_halves(Rect { x: 8.0, y: 84.0, width: 1008.0, height: 700.0 });
+        assert_eq!((left.width, right.x, right.width), (500.0, 516.0, 500.0));
         // Vertical tabs: the list takes the left side.
         let (page, _) = page_layout((1280.0, 800.0), 44.0, 240.0, false, false);
         assert_eq!(page, Rect { x: 240.0, y: 44.0, width: 1032.0, height: 748.0 });

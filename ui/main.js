@@ -306,10 +306,11 @@ function openTabMenu(tab, event) {
   const right = state.tabs.slice(index + 1).some((item) => !item.pinned);
   const groups = (state.groups || []).filter((group) => group.id !== tab.group);
   const groupRows = tab.pinned ? 0 : 1 + groups.length + (tab.group != null ? 1 : 0);
-  const height = (9 + groupRows) * 32 + (tab.pinned ? 4 : 5) * 11 + 14;
+  const splitRow = state.split != null || tab.id !== state.active ? 1 : 0;
+  const height = (9 + groupRows + splitRow) * 32 + (tab.pinned ? 4 : 5) * 11 + 14;
   openPopup(
     "tab-menu",
-    { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right, group: tab.group ?? null, groups },
+    { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right, group: tab.group ?? null, groups, active: tab.id === state.active, split: state.split ?? null },
     { x: event.clientX, y: Math.min(event.clientY, window.innerHeight - height - 8), width: 300, height },
   );
 }
@@ -412,6 +413,7 @@ function updateTab(el, tab) {
   el.classList.toggle("new-tab-page", isNewTabPage);
   el.classList.toggle("pinned", Boolean(tab.pinned));
   el.classList.toggle("asleep", Boolean(tab.asleep) && !isActive);
+  el.classList.toggle("split", state.split === tab.id);
   el.setAttribute("aria-selected", String(isActive));
   if (el.title !== tab.title) {
     el.title = tab.title;

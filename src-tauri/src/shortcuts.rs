@@ -58,6 +58,8 @@ pub enum Action {
     ViewSource,
     /// Ctrl+Shift+S: a picture of the page, saved to Downloads.
     Screenshot,
+    /// End split view.
+    Unsplit,
     /// Put the other tabs to sleep now.
     SleepOtherTabs,
 }
@@ -216,6 +218,13 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
                 _ => Ok(()),
             },
             Action::Screenshot => screenshot(&app, window).await,
+            Action::Unsplit => {
+                windows::set_split(&app, window, None);
+                if let Some(id) = tabs::active_tab_id(&app, window) {
+                    tabs::show_only(&app, id);
+                }
+                Ok(())
+            }
             Action::OpenBookmarks => {
                 tell_toolbar(&app, window, "open-bookmarks");
                 Ok(())

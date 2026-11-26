@@ -158,6 +158,8 @@ pub struct TabsState {
     tabs: Vec<TabInfo>,
     active: Option<u32>,
     groups: Vec<TabGroup>,
+    /// The tab shown at the right in split view.
+    split: Option<u32>,
 }
 
 /// Script added to every website: middle click and Ctrl+click on a link ask
@@ -239,14 +241,17 @@ pub fn window_of_tab(app: &AppHandle, id: u32) -> Option<String> {
 }
 
 fn snapshot(app: &AppHandle, window: &str) -> TabsState {
-    with_tabs(app, |list| {
+    let split = windows::split_of(app, window);
+    let mut state = with_tabs(app, |list| {
         let tabs = list.windows.get(window).map_or_else(Vec::new, |w| {
             w.order.iter().filter_map(|id| list.info.get(id).cloned()).collect()
         });
         let active = list.windows.get(window).and_then(|w| w.active);
         let groups = list.windows.get(window).map(|w| w.groups.clone()).unwrap_or_default();
-        TabsState { window: window.to_string(), tabs, active, groups }
-    })
+        TabsState { window: window.to_string(), tabs, active, groups, split: None }
+    });
+    state.split = split;
+    state
 }
 
 /// Saves the open windows and tabs (private windows are never saved).
@@ -741,6 +746,14 @@ pub fn create_tab_at(
 /// window. The new tab is shown before the others are hidden, so nothing
 /// flashes in between.
 pub fn show_only(app: &AppHandle, id: u32) {
+    // Choosing the right-hand tab of split view: the two swap sides.
+    if let Some(window) = window_of_tab(app, id) {
+        if windows::split_of(app, &window) == Some(id) {
+            if let Some(previous) = active_id(app, &window) {
+                windows::set_split(app, &window, Some(previous));
+            }
+        }
+    }
     let Some((window, changed)) = with_tabs(app, |list| {
         let window = list.info.get(&id)?.window.clone();
         let tabs = list.windows.get_mut(&window)?;
@@ -777,14 +790,41 @@ pub fn show_only(app: &AppHandle, id: u32) {
             let _ = webview.show();
         }
     }
+    let partner = windows::split_of(app, &window).filter(|p| *p != id);
     for other in tab_ids(app, &window) {
-        if other != id {
+        if other != id && Some(other) != partner {
             if let Some(webview) = app.get_webview(&label(other)) {
                 let _ = webview.hide();
             }
         }
     }
+    if partner.is_some() {
+        windows::layout(app, &window);
+    }
     publish(app, &window);
+}
+
+/// Shows `id` at the right of the active tab (split view), or ends split view.
+pub fn split_with(app: &AppHandle, id: u32, on: bool) -> Result<(), String> {
+    let window = window_of_tab(app, id).ok_or("Tab not found")?;
+    if !on {
+        windows::set_split(app, &window, None);
+        if let Some(active) = active_id(app, &window) {
+            show_only(app, active);
+        }
+        return Ok(());
+    }
+    if active_id(app, &window) == Some(id) {
+        return Err("Bu sekme zaten açık".into());
+    }
+    let webview = match app.get_webview(&label(id)) {
+        Some(webview) => webview,
+        None => wake(app, id).map_err(|e| e.to_string())?,
+    };
+    windows::set_split(app, &window, Some(id));
+    let _ = webview.show();
+    publish(app, &window);
+    Ok(())
 }
 
 fn tab_ids(app: &AppHandle, window: &str) -> Vec<u32> {
@@ -920,6 +960,12 @@ pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
     let Some((window, next)) = result else {
         return Ok(());
     };
+    // Split view ends when one of its two tabs closes.
+    if let Some(split) = windows::split_of(app, &window) {
+        if split == id || next != active_id(app, &window) || Some(split) == next {
+            windows::set_split(app, &window, None);
+        }
+    }
 
     match next {
         // Show the next tab first, then close this one, so nothing flashes in between.
@@ -1389,6 +1435,8 @@ pub async fn tab_action(app: AppHandle, id: u32, action: String) -> Result<(), S
         "close" => close(&app, id),
         "close-others" => close_others(&app, id, false),
         "close-right" => close_others(&app, id, true),
+        "split" => split_with(&app, id, true),
+        "unsplit" => split_with(&app, id, false),
         "group-new" => set_group(&app, id, None, true),
         "ungroup" => set_group(&app, id, None, false),
         other if other.starts_with("group-") => {
