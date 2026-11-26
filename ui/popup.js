@@ -35,6 +35,7 @@ const ICONS = {
   download: svg('<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>'),
   star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>'),
   puzzle: svg('<path d="M9 4h4v2.5a1.5 1.5 0 0 0 3 0V4h3a1 1 0 0 1 1 1v4h-2.5a1.5 1.5 0 0 0 0 3H20v7a1 1 0 0 1-1 1h-4v-2.5a1.5 1.5 0 0 0-3 0V20H5a1 1 0 0 1-1-1v-6h2.5a1.5 1.5 0 0 0 0-3H4V5a1 1 0 0 1 1-1z"/>'),
+  shield: svg('<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>'),
   settings: svg('<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'),
   reload: svg('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
@@ -215,6 +216,94 @@ async function drawSiteInfo(data) {
   root.replaceChildren(...children);
 }
 
+// The shield: the ad blocker (uBlock Origin Lite) on or off.
+function drawAdblock(data) {
+  const children = [el("div", { class: "box-head", html: ICONS.shield }, [el("span", { class: "label", text: "Reklam engelleyici" })])];
+  if (data.id) {
+    const toggle = el("input", { type: "checkbox", class: "switch", role: "switch", "aria-label": "Reklam engelleyici açık" });
+    toggle.checked = data.enabled;
+    toggle.addEventListener("change", async () => {
+      try {
+        await invoke("set_extension_enabled", { id: data.id, enabled: toggle.checked });
+      } catch (error) {
+        toggle.checked = !toggle.checked;
+      }
+      status.textContent = toggle.checked ? "Reklamlar ve izleyiciler engelleniyor" : "Kapalı: reklamlar görünür";
+    });
+    children[0].append(toggle);
+    const status = el("p", { class: "box-text", text: data.enabled ? "Reklamlar ve izleyiciler engelleniyor" : "Kapalı: reklamlar görünür" });
+    children.push(status, el("p", { class: "box-note", text: "uBlock Origin Lite ile. Açıp kapatınca sayfayı yenile" }));
+    if (data.hasOptions) {
+      children.push(el("hr"), item("settings", "Engelleme ayarları", null, () => run("open_extension_options", { id: data.id })));
+    }
+  } else if (data.busy) {
+    children.push(el("p", { class: "box-text", text: "Kuruluyor… Birkaç saniye sürer" }));
+  } else {
+    children.push(
+      el("p", { class: "box-text", text: data.error ? "Kurulamadı" : "Henüz kurulu değil" }),
+      el("p", { class: "box-note error", text: data.error || "" }),
+      el("div", { class: "box-foot" }, [
+        el("button", {
+          class: "reset",
+          text: data.error ? "Tekrar dene" : "Kur",
+          onclick: async (event) => {
+            event.currentTarget.disabled = true;
+            event.currentTarget.textContent = "Kuruluyor…";
+            try {
+              await invoke("install_adblock");
+              close();
+            } catch (error) {
+              drawAdblock({ ...data, error: String(error) });
+            }
+          },
+        }),
+      ]),
+    );
+  }
+  root.className = "popup";
+  root.replaceChildren(...children);
+}
+
+// The puzzle: added extensions, quick on/off.
+function drawExtensions(data) {
+  const rows = data.items.map((ext) => {
+    const icon = el("span", { class: "ext-icon", html: ext.icon ? "" : ICONS.puzzle });
+    if (ext.icon) icon.append(el("img", { src: ext.icon, alt: "" }));
+    const toggle = el("input", { type: "checkbox", class: "switch", role: "switch", "aria-label": `${ext.name} açık` });
+    toggle.checked = ext.enabled;
+    toggle.addEventListener("change", async () => {
+      try {
+        await invoke("set_extension_enabled", { id: ext.id, enabled: toggle.checked });
+      } catch {
+        toggle.checked = !toggle.checked;
+      }
+    });
+    const name = el("span", { class: "label", text: ext.name || ext.id, title: ext.name });
+    const row = el("div", { class: "ext-row" }, [icon, name]);
+    if (ext.hasOptions) {
+      row.append(el("button", {
+        class: "step",
+        title: "Ayarlar",
+        "aria-label": `${ext.name} ayarları`,
+        html: ICONS.settings,
+        onclick: async () => {
+          await run("open_extension_options", { id: ext.id });
+          close();
+        },
+      }));
+    }
+    row.append(toggle);
+    return row;
+  });
+  root.className = "popup";
+  root.replaceChildren(
+    el("div", { class: "box-head", html: ICONS.puzzle }, [el("span", { class: "label", text: "Uzantılar" })]),
+    ...(rows.length ? rows : [el("p", { class: "box-text muted", text: "Henüz uzantı yok. Mağazada “Raven'a ekle” ile ekle" })]),
+    el("hr"),
+    item("settings", "Uzantıları yönet", null, action("open-extensions")),
+  );
+}
+
 // Address bar suggestions. The toolbar keeps the keyboard; it tells which row
 // is highlighted with popup_update. A click opens the row here.
 function shortUrl(url) {
@@ -258,6 +347,8 @@ const DRAW = {
   zoom: drawZoom,
   "tab-menu": drawTabMenu,
   "site-info": drawSiteInfo,
+  adblock: drawAdblock,
+  extensions: drawExtensions,
   suggestions: drawSuggestions,
 };
 

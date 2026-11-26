@@ -52,10 +52,12 @@ pub struct Extensions {
     saved: Mutex<Saved>,
     /// Store ids being downloaded or added now.
     busy: Mutex<HashSet<String>>,
+    /// Why the ad blocker could not be added, if it could not.
+    adblock_error: Mutex<Option<String>>,
 }
 
 pub fn load(app: &AppHandle) -> Extensions {
-    Extensions { saved: Mutex::new(storage::read(app, FILE)), busy: Mutex::default() }
+    Extensions { saved: Mutex::new(storage::read(app, FILE)), busy: Mutex::default(), adblock_error: Mutex::default() }
 }
 
 fn save(app: &AppHandle) {
@@ -232,6 +234,9 @@ pub fn install(app: &AppHandle, store_id: &str) -> Result<(), String> {
         Ok(())
     })();
     state.busy.lock().unwrap().remove(store_id);
+    if store_id == ADBLOCK_ID {
+        *state.adblock_error.lock().unwrap() = result.clone().err();
+    }
     match &result {
         Ok(()) => {
             save(app);
@@ -271,30 +276,41 @@ pub struct ExtensionInfo {
     adblock: bool,
 }
 
-/// Raven's tabs offer "Raven'a ekle" on extension pages of the Chrome Web Store.
+/// On extension pages of the Chrome Web Store, the store's own "Chrome'a ekle"
+/// button becomes "Raven'a ekle" and adds the extension to Raven.
 pub const STORE_SCRIPT: &str = r#"(() => {
   if (location.hostname !== "chromewebstore.google.com") return;
-  let button = null;
   function idOfPage() {
     const match = location.pathname.match(/\/detail\/(?:[^/]+\/)?([a-p]{32})/);
     return match ? match[1] : null;
   }
-  function update() {
-    const id = idOfPage();
-    if (!id) { button?.remove(); button = null; return; }
-    if (!document.body) return;
-    if (!button) {
-      button = document.createElement("button");
-      button.textContent = "Raven'a ekle";
-      button.style.cssText = "position:fixed;right:24px;bottom:24px;z-index:2147483647;height:44px;padding:0 22px;border:0;border-radius:22px;background:#a07fe0;color:#fff;font:600 15px 'Segoe UI',system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer";
-      button.addEventListener("click", () => {
-        location.href = "raven-action:install-extension:" + idOfPage();
-      });
-      document.body.appendChild(button);
+  // The store's add button: a button whose text names Chrome (any language).
+  function isAddButton(button) {
+    return button && !button.closest("header, nav") && /chrome|raven/i.test(button.textContent || "")
+      && (button.textContent || "").length < 40;
+  }
+  function relabel() {
+    if (!idOfPage() || !document.body) return;
+    for (const button of document.querySelectorAll("button")) {
+      if (!isAddButton(button)) continue;
+      button.disabled = false;
+      button.removeAttribute("aria-disabled");
+      const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (/chrome/i.test(node.nodeValue)) node.nodeValue = node.nodeValue.replace(/Chrome/g, "Raven");
+      }
     }
   }
-  setInterval(update, 800);
-  addEventListener("DOMContentLoaded", update);
+  addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("button") : null;
+    const id = idOfPage();
+    if (!id || !isAddButton(button)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    location.href = "raven-action:install-extension:" + id;
+  }, true);
+  setInterval(relabel, 500);
+  addEventListener("DOMContentLoaded", relabel);
 })();"#;
 
 /// A tab on the Chrome Web Store asked to add an extension (its "Raven'a ekle"
@@ -339,6 +355,56 @@ pub async fn get_extensions(app: AppHandle) -> Result<Vec<ExtensionInfo>, String
             }
         })
         .collect())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdblockInfo {
+    /// WebView2's id, when it is added.
+    id: Option<String>,
+    enabled: bool,
+    /// Being downloaded or added now.
+    busy: bool,
+    error: Option<String>,
+    has_options: bool,
+}
+
+/// The ad blocker's state, for the shield in the toolbar.
+#[tauri::command]
+pub async fn get_adblock(app: AppHandle) -> Result<AdblockInfo, String> {
+    let (installed, busy, error) = {
+        let state = app.state::<Extensions>();
+        let installed = state.saved.lock().unwrap().installed.iter().find(|e| e.store_id == ADBLOCK_ID).cloned();
+        let busy = state.busy.lock().unwrap().contains(ADBLOCK_ID);
+        let error = state.adblock_error.lock().unwrap().clone();
+        (installed, busy, error)
+    };
+    let enabled = match &installed {
+        Some(item) => {
+            let id = item.id.clone();
+            let found = tauri::async_runtime::spawn_blocking({
+                let app = app.clone();
+                move || native::list(&app)
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+            found.iter().find(|f| f.id == id).is_some_and(|f| f.enabled)
+        }
+        None => false,
+    };
+    Ok(AdblockInfo {
+        has_options: installed.as_ref().is_some_and(|e| e.options.is_some()),
+        id: installed.map(|e| e.id),
+        enabled,
+        busy,
+        error,
+    })
+}
+
+/// Adds the ad blocker (again).
+#[tauri::command]
+pub async fn install_adblock(app: AppHandle) -> Result<(), String> {
+    install_extension(app, ADBLOCK_ID.to_string()).await
 }
 
 /// Adds an extension from a Chrome Web Store link (or its id).

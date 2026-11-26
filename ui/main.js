@@ -123,6 +123,45 @@ popupButton(siteButton, "site-info", (rect) => {
   openPopup("site-info", { url: tab.url }, { x: rect.left - 6, y: rect.bottom + 8, width: 320, height: web ? 352 : 120 });
 });
 
+// The ad blocker's shield and the extensions button.
+const adblockButton = document.getElementById("adblock-button");
+let adblock = null;
+
+async function refreshAdblock() {
+  try {
+    adblock = await invoke("get_adblock");
+  } catch (error) {
+    adblock = { id: null, enabled: false, busy: false, error: String(error) };
+  }
+  adblockButton.classList.toggle("on", Boolean(adblock.id && adblock.enabled));
+  adblockButton.classList.toggle("busy", adblock.busy);
+  const label = adblock.busy ? "Reklam engelleyici kuruluyor" : adblock.id && adblock.enabled ? "Reklamlar engelleniyor" : "Reklam engelleyici kapalı";
+  adblockButton.title = label;
+  adblockButton.setAttribute("aria-label", label);
+}
+refreshAdblock();
+listen("extensions-changed", refreshAdblock);
+listen("extension-install", refreshAdblock);
+
+popupButton(adblockButton, "adblock", async (rect) => {
+  await refreshAdblock();
+  const width = 300;
+  const height = adblock.id ? (adblock.hasOptions ? 172 : 128) : adblock.busy ? 92 : 196;
+  openPopup("adblock", adblock, { x: rect.right - width, y: rect.bottom + 4, width, height });
+});
+
+popupButton(document.getElementById("extensions-button"), "extensions", async (rect) => {
+  let items = [];
+  try {
+    items = (await invoke("get_extensions")).filter((item) => !item.adblock);
+  } catch (error) {
+    console.error(error);
+  }
+  const width = 320;
+  const rows = Math.max(items.length, 1);
+  openPopup("extensions", { items }, { x: rect.right - width, y: rect.bottom + 4, width, height: 44 + rows * 44 + 9 + 36 + 14 });
+});
+
 // Address bar suggestions from history and bookmarks.
 
 let typed = ""; // What the user typed (without the completed part).

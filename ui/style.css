@@ -375,6 +375,14 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
 
 .panel-note { margin: 8px 0 0; color: var(--text-3); font-size: 13px; }
 
+/* The ad blocker's shield: purple while it blocks. */
+.shield .shield-check { opacity: 0; }
+.shield.on { color: var(--accent); }
+.shield.on .shield-check { opacity: 1; }
+.shield.on:hover { color: var(--accent); }
+.shield.busy { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
 /* Extensions */
 .primary {
   height: 36px;

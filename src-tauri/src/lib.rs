@@ -61,6 +61,8 @@ pub fn run() {
             suggest::get_suggestions,
             extensions::get_extensions,
             extensions::install_extension,
+            extensions::get_adblock,
+            extensions::install_adblock,
             extensions::set_extension_enabled,
             extensions::remove_extension,
             extensions::open_extension_options,
