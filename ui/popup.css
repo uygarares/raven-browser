@@ -342,3 +342,6 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .popup.qr .card-url { margin-top: 8px; max-width: 100%; }
 .ext-row.has-popup .label, .ext-row.has-popup .ext-icon { cursor: pointer; }
 .ext-row.has-popup .label:hover { color: var(--accent); }
+
+.suggestion .title.calc { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.suggestion .kind.switch-tab { padding: 2px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-weight: 700; }

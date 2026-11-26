@@ -80,6 +80,7 @@ pub fn run() {
             settings::clear_browsing_data,
             settings::clear_data,
             tabs::get_closed_tabs,
+            suggest::search_suggestions,
             downloads::cancel_download,
             tabs::reopen_closed_tab,
             bookmarks::get_bookmarks,

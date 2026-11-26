@@ -47,7 +47,18 @@ document.getElementById("reload").addEventListener("click", () => run("reload"))
 
 addressForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  const picked = selected >= 0 ? rows[selected] : null;
   closeSuggestions();
+  if (picked?.kind === "tab") {
+    run("switch_tab", { id: picked.id });
+    address.blur();
+    return;
+  }
+  if (picked?.kind === "calc") {
+    address.value = picked.text;
+    address.select();
+    return;
+  }
   // "? question" goes to the AI panel.
   const text = address.value.trim();
   if (text.startsWith("?") && text.length > 1) {
@@ -260,11 +271,119 @@ address.addEventListener("input", async (event) => {
     address.setSelectionRange(query.length, address.value.length);
   }
   const question = query.startsWith("?") ? query.slice(1).trim() : query;
-  rows = query.startsWith("?")
-    ? [{ kind: "ai", text: question }]
-    : [{ kind: "search", text: query }, ...result.items, ...(query.includes(" ") ? [{ kind: "ai", text: question }] : [])];
+  if (query.startsWith("?")) {
+    rows = [{ kind: "ai", text: question }];
+  } else {
+    const answer = calculate(query);
+    const local = [
+      ...(answer != null ? [{ kind: "calc", text: answer }] : []),
+      ...openTabsMatching(query),
+      ...result.items.slice(0, 5),
+    ];
+    rows = [{ kind: "search", text: query }, ...local, ...(query.includes(" ") ? [{ kind: "ai", text: question }] : [])];
+    // The search engine's suggestions come a moment later.
+    run("search_suggestions", { query }).then((words) => {
+      if (token !== suggestToken || !words?.length || document.activeElement !== address) return;
+      const extra = words.filter((text) => !rows.some((row) => row.kind === "search" && row.text.toLowerCase() === text.toLowerCase())).slice(0, 4);
+      if (!extra.length) return;
+      const ai = rows.filter((row) => row.kind === "ai");
+      rows = [...rows.filter((row) => row.kind !== "ai"), ...extra.map((text) => ({ kind: "search", text, suggested: true })), ...ai];
+      showSuggestions();
+    });
+  }
   showSuggestions();
 });
+
+/// Open tabs whose title or address has every typed word ("Sekmeye geç").
+function openTabsMatching(query) {
+  const words = foldText(query).split(/\s+/).filter(Boolean);
+  if (!words.length || query.length < 2) return [];
+  return state.tabs
+    .filter((tab) => tab.id !== state.active && tab.url && !tab.url.startsWith("raven"))
+    .filter((tab) => {
+      const text = foldText(`${tab.title} ${tab.url}`);
+      return words.every((word) => text.includes(word));
+    })
+    .slice(0, 2)
+    .map((tab) => ({ kind: "tab", id: tab.id, url: tab.url, title: tab.title || tab.url }));
+}
+
+function foldText(text) {
+  return (text || "").toLocaleLowerCase("tr").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
+}
+
+/// "12*(3+4)" or "2^10" in the address bar: the answer, like Chrome. Only plain
+/// arithmetic (no letters), so it never runs anything.
+function calculate(text) {
+  const source = text.replace(/\s+/g, "").replace(/×/g, "*").replace(/÷/g, "/").replace(/,/g, ".");
+  if (!/^[\d.+\-*/^%()]+$/.test(source) || !/\d/.test(source) || !/[+\-*/^%]/.test(source.replace(/^-/, ""))) return null;
+  // Dates and phone numbers (2024-11-27, 0532-123-4567) are not sums.
+  if (/^\d+(-\d+)+$/.test(source) || /^\d+(\/\d+){2}$/.test(source)) return null;
+  let i = 0;
+  const peek = () => source[i];
+  function number() {
+    const start = i;
+    while (i < source.length && /[\d.]/.test(source[i])) i += 1;
+    const value = Number(source.slice(start, i));
+    if (start === i || Number.isNaN(value)) throw new Error("number");
+    return value;
+  }
+  function factor() {
+    if (peek() === "-") {
+      i += 1;
+      return -factor();
+    }
+    if (peek() === "+") {
+      i += 1;
+      return factor();
+    }
+    let value;
+    if (peek() === "(") {
+      i += 1;
+      value = sum();
+      if (peek() !== ")") throw new Error(")");
+      i += 1;
+    } else {
+      value = number();
+    }
+    if (peek() === "%") {
+      i += 1;
+      value /= 100;
+    }
+    if (peek() === "^") {
+      i += 1;
+      value = value ** factor();
+    }
+    return value;
+  }
+  function product() {
+    let value = factor();
+    while (peek() === "*" || peek() === "/") {
+      const op = source[i];
+      i += 1;
+      const right = factor();
+      value = op === "*" ? value * right : value / right;
+    }
+    return value;
+  }
+  function sum() {
+    let value = product();
+    while (peek() === "+" || peek() === "-") {
+      const op = source[i];
+      i += 1;
+      const right = product();
+      value = op === "+" ? value + right : value - right;
+    }
+    return value;
+  }
+  try {
+    const value = sum();
+    if (i !== source.length || !Number.isFinite(value)) return null;
+    return Number(value.toPrecision(12)).toLocaleString("tr-TR", { maximumFractionDigits: 10 });
+  } catch {
+    return null;
+  }
+}
 
 address.addEventListener("keydown", (event) => {
   // Ctrl+Enter: "google" becomes www.google.com. Alt+Enter: open in a new tab.
@@ -283,7 +402,7 @@ address.addEventListener("keydown", (event) => {
     // Cycle through -1 (what was typed), 0 … rows.length - 1.
     selected = ((selected + 1 + step + rows.length + 1) % (rows.length + 1)) - 1;
     const row = rows[selected];
-    address.value = !row ? typed : row.kind === "search" ? row.text : row.kind === "ai" ? `? ${row.text}` : row.url;
+    address.value = !row ? typed : row.kind === "search" ? row.text : row.kind === "ai" ? `? ${row.text}` : row.kind === "calc" ? typed : row.url;
     run("popup_update", { data: { selected } });
   } else if (event.key === "Escape") {
     event.preventDefault();
@@ -1956,6 +2075,12 @@ function showQr() {
 }
 listenHere("toolbar-command", (payload) => {
   if (payload.command === "qr") showQr();
+  if (payload.command === "set-address") {
+    address.value = payload.text;
+    address.focus();
+    address.select();
+    closeSuggestions();
+  }
   if (payload.command === "translate") {
     const tab = activeTab();
     if (tab?.url?.startsWith("http")) run("open_url", { url: `https://translate.google.com/translate?sl=auto&tl=tr&hl=tr&u=${encodeURIComponent(tab.url)}`, newTab: false });

@@ -416,6 +416,13 @@ function drawSuggestions(data) {
         mark.classList.add("plain");
         mark.innerHTML = ICONS.search;
         children.push(el("span", { class: "title", text: row.text }), el("span", { class: "kind", text: "Ara" }));
+      } else if (row.kind === "calc") {
+        mark.classList.add("plain");
+        mark.innerHTML = ICONS.command;
+        children.push(el("span", { class: "title calc", text: `= ${row.text}` }), el("span", { class: "kind", text: "Kopyalamak için seç" }));
+      } else if (row.kind === "tab") {
+        RavenIcons.fill(mark, row.url, row.title);
+        children.push(el("span", { class: "title", text: row.title }), el("span", { class: "url", text: shortUrl(row.url) }), el("span", { class: "kind switch-tab", text: "Sekmeye geç" }));
       } else if (row.kind === "ai") {
         mark.classList.add("plain");
         mark.innerHTML = ICONS.sparkle;
@@ -431,7 +438,11 @@ function drawSuggestions(data) {
       button.addEventListener("mousedown", (event) => {
         event.preventDefault();
         if (row.kind === "ai") run("ask_question", { question: row.text });
-        else run("navigate", { input: row.kind === "search" ? row.text : row.url });
+        else if (row.kind === "tab") run("switch_tab", { id: row.id });
+        else if (row.kind === "calc") {
+          window.__TAURI__.event.emit("toolbar-command", { window: WINDOW, command: "set-address", text: row.text });
+          return;
+        } else run("navigate", { input: row.kind === "search" ? row.text : row.url });
         close();
       });
       return button;

@@ -135,6 +135,29 @@ pub fn fetch(url: &str) -> Result<Vec<u8>, String> {
     response_of(url)
 }
 
+/// A small, fast request (search suggestions): gives up after two seconds.
+/// The connection is kept for the next one.
+pub fn fetch_quick(url: &str) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    static AGENT: std::sync::OnceLock<Option<ureq::Agent>> = std::sync::OnceLock::new();
+    let agent = AGENT
+        .get_or_init(|| {
+            let tls = native_tls::TlsConnector::new().ok()?;
+            Some(
+                ureq::AgentBuilder::new()
+                    .tls_connector(std::sync::Arc::new(tls))
+                    .timeout(std::time::Duration::from_secs(2))
+                    .build(),
+            )
+        })
+        .as_ref()
+        .ok_or("No TLS")?;
+    let response = agent.get(url).call().map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    response.into_reader().take(256 * 1024).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    Ok(bytes)
+}
+
 fn response_of(url: &str) -> Result<Vec<u8>, String> {
     let tls = native_tls::TlsConnector::new().map_err(|e| e.to_string())?;
     let agent = ureq::AgentBuilder::new()

@@ -148,6 +148,66 @@ pub fn rank(
     Suggestions { items, inline }
 }
 
+/// Where the chosen search engine answers "what might you be typing".
+/// All of them answer in the OpenSearch format: ["query", ["one", "two"]].
+fn suggest_url(engine: &str, query: &str) -> Option<String> {
+    let (base, key, extra): (&str, &str, &[(&str, &str)]) = match engine {
+        "google" => ("https://suggestqueries.google.com/complete/search", "q", &[("client", "firefox"), ("hl", "tr"), ("ie", "utf-8"), ("oe", "utf-8")]),
+        "duckduckgo" => ("https://duckduckgo.com/ac/", "q", &[("type", "list"), ("kl", "tr-tr")]),
+        "bing" => ("https://api.bing.com/osjson.aspx", "query", &[("mkt", "tr-TR")]),
+        "brave" => ("https://search.brave.com/api/suggest", "q", &[]),
+        "yandex" => ("https://suggest.yandex.com.tr/suggest-ff.cgi", "part", &[("uil", "tr")]),
+        _ => return None,
+    };
+    let mut pairs: Vec<(&str, &str)> = extra.to_vec();
+    pairs.push((key, query));
+    tauri::Url::parse_with_params(base, &pairs).ok().map(|u| u.to_string())
+}
+
+/// The suggestions in an OpenSearch answer.
+fn parse_suggestions(bytes: &[u8], query: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else { return Vec::new() };
+    let query = query.trim().to_lowercase();
+    value
+        .get(1)
+        .and_then(|list| list.as_array())
+        .map(|list| {
+            list.iter()
+                .filter_map(|item| item.as_str())
+                .map(str::trim)
+                .filter(|text| !text.is_empty() && text.to_lowercase() != query)
+                .take(4)
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// What the search engine suggests for the typed text (not in private
+/// windows, and not when that setting is off).
+#[tauri::command]
+pub async fn search_suggestions(app: AppHandle, webview: tauri::Webview, query: String) -> Vec<String> {
+    let (on, engine) = {
+        let state = app.state::<crate::settings::SettingsState>();
+        let settings = state.0.lock().unwrap();
+        (settings.search_suggestions, settings.search_engine.clone())
+    };
+    let query = query.trim().to_string();
+    if !on || query.is_empty() || query.len() > 200 || crate::windows::is_private(&app, &crate::windows::window_of(&webview)) {
+        return Vec::new();
+    }
+    // Addresses are not sent to the search engine.
+    if query.contains("://") || (!query.contains(' ') && query.contains('.') && !query.ends_with('.')) {
+        return Vec::new();
+    }
+    let Some(url) = suggest_url(&engine, &query) else { return Vec::new() };
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::extensions::fetch_quick(&url).map(|bytes| parse_suggestions(&bytes, &query)).unwrap_or_default()
+    })
+    .await
+    .unwrap_or_default()
+}
+
 #[tauri::command]
 pub async fn get_suggestions(app: AppHandle, query: String) -> Suggestions {
     let bookmarks: Vec<(String, String)> = app
@@ -167,6 +227,14 @@ mod tests {
 
     fn visit(url: &str, title: &str, time: i64) -> history::Entry {
         history::Entry { url: url.into(), title: title.into(), time }
+    }
+
+    #[test]
+    fn reads_opensearch_suggestions() {
+        let answer = br#"["hava", ["hava durumu", "Hava", "hava durumu istanbul", "havalimani", "havas", "x"]]"#;
+        assert_eq!(parse_suggestions(answer, "hava"), vec!["hava durumu", "hava durumu istanbul", "havalimani", "havas"]);
+        assert!(parse_suggestions(b"<html>", "a").is_empty());
+        assert!(suggest_url("google", "çay saati").unwrap().contains("q=%C3%A7ay+saati"));
     }
 
     #[test]

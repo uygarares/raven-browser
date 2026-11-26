@@ -52,6 +52,8 @@ pub struct Settings {
     pub game_mode: bool,
     /// Raven Shield blocks ads and trackers.
     pub shield: bool,
+    /// The search engine suggests searches while you type in the address bar.
+    pub search_suggestions: bool,
     /// Offer to translate pages in other languages to Turkish.
     pub offer_translate: bool,
     /// The shield also hides "we use cookies" banners.
@@ -127,6 +129,7 @@ impl Default for Settings {
             shield: true,
             hide_cookie_banners: true,
             offer_translate: true,
+            search_suggestions: true,
             block_autoplay: false,
             https_upgrade: true,
             vertical_tabs: false,
