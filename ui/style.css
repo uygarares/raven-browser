@@ -14,8 +14,12 @@
   --page-radius: 12px;
   --ai-width: 420px;
   --ai-header: 48px;
+  /* Must match SIDEBAR_WIDTH in windows.rs. */
+  --sidebar-width: 240px;
 }
 body.with-bookmarks-bar { --toolbar-height: calc(84px + var(--bookmarks-bar-height)); }
+body.vertical-tabs { --toolbar-height: 44px; }
+body.vertical-tabs.with-bookmarks-bar { --toolbar-height: calc(44px + var(--bookmarks-bar-height)); }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -731,3 +735,41 @@ select option { background: var(--menu); color: var(--text); }
 .extension-row.off .extension-name, .extension-row.off .extension-icon { opacity: 0.5; }
 
 [data-appearance="light"] .logo { filter: saturate(1.6) brightness(0.55); }
+
+/* Vertical tabs: the address row on top, the tabs in a list at the left. */
+body.vertical-tabs .nav-row { padding-right: 148px; padding-left: 12px; }
+body.vertical-tabs .tab-row {
+  position: fixed;
+  left: 0;
+  top: var(--toolbar-height);
+  bottom: 0;
+  width: var(--sidebar-width);
+  height: auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0 8px 10px 10px;
+}
+body.vertical-tabs .logo { display: none; }
+body.vertical-tabs .private-badge { align-self: flex-start; margin: 0 0 2px; }
+body.vertical-tabs .window-controls { position: fixed; top: 0; right: 0; height: 44px; }
+body.vertical-tabs .drag-space { display: none; }
+body.vertical-tabs .tabs { flex-direction: column; align-items: stretch; height: auto; flex: 0 1 auto; overflow-y: auto; overflow-x: hidden; padding: 0; gap: 2px; }
+body.vertical-tabs .tab { flex: none; width: auto; min-width: 0; height: 36px; }
+body.vertical-tabs .tab.pinned { width: auto; min-width: 0; padding: 0 4px 0 10px; justify-content: flex-start; gap: 8px; }
+body.vertical-tabs .tab.pinned .tab-title { display: block; }
+body.vertical-tabs .tab.active::after { left: 0; right: auto; top: 9px; bottom: 9px; width: 3px; height: auto; }
+body.vertical-tabs .new-tab {
+  width: auto;
+  height: 36px;
+  margin: 0;
+  justify-content: start;
+  padding: 0 10px;
+  grid-auto-flow: column;
+  gap: 8px;
+  color: var(--text-3);
+}
+body.vertical-tabs .new-tab::after { content: "Yeni sekme"; font: 600 12.5px var(--font); }
+body.vertical-tabs .page-slot, body.vertical-tabs .panel { left: var(--sidebar-width); }
+body.vertical-tabs.fullscreen .tab-row { visibility: hidden; }
+body.vertical-tabs .tab.pinned:has(.tab-audio:not([hidden])) { width: auto; min-width: 0; }

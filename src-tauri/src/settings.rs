@@ -56,6 +56,8 @@ pub struct Settings {
     pub block_autoplay: bool,
     /// Upgrade http:// addresses to https://.
     pub https_upgrade: bool,
+    /// Tabs in a list at the left instead of a row on top.
+    pub vertical_tabs: bool,
 }
 
 /// Search engines Raven offers: id, name, and the address the words are added to.
@@ -100,6 +102,7 @@ impl Default for Settings {
             shield: true,
             block_autoplay: false,
             https_upgrade: true,
+            vertical_tabs: false,
         }
     }
 }
@@ -160,6 +163,7 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<Setting
     *app.state::<SettingsState>().0.lock().unwrap() = settings.clone();
     let _ = app.emit("settings", &settings);
     crate::tabs::apply_settings(&app);
+    crate::windows::set_vertical_tabs(&app, settings.vertical_tabs);
     crate::bookmarks::refresh_bar(&app);
     // New tab pages read the search engine when they load, so reload the open ones.
     crate::tabs::reload_new_tab_pages(&app);

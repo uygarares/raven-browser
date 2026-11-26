@@ -31,6 +31,11 @@ pub const BACKGROUND: tauri::window::Color = tauri::window::Color(17, 16, 32, 25
 const MENU_BACKGROUND: tauri::window::Color = tauri::window::Color(25, 24, 47, 255);
 
 static SHOW_BOOKMARKS_BAR: AtomicBool = AtomicBool::new(false);
+static VERTICAL_TABS: AtomicBool = AtomicBool::new(false);
+/// With vertical tabs only the address row is on top.
+const TOOLBAR_VERTICAL: f64 = 44.0;
+/// Width of the tab list at the left (ui/style.css --sidebar-width).
+pub const SIDEBAR_WIDTH: f64 = 240.0;
 static NEXT_WINDOW: AtomicU32 = AtomicU32::new(1);
 
 #[derive(Clone, Default)]
@@ -61,19 +66,19 @@ pub struct Rect {
 
 /// The page card and the AI panel for a window of `size`, with a toolbar of
 /// height `top`.
-pub fn page_layout(size: (f64, f64), top: f64, ai_panel: bool, fullscreen: bool) -> (Rect, Option<Rect>) {
+pub fn page_layout(size: (f64, f64), top: f64, left: f64, ai_panel: bool, fullscreen: bool) -> (Rect, Option<Rect>) {
     let (width, height) = size;
     if fullscreen {
         return (Rect { x: 0.0, y: 0.0, width, height }, None);
     }
     let m = PAGE_MARGIN;
     let inner_height = (height - top - m).max(0.0);
-    if ai_panel && width > AI_PANEL_WIDTH + 320.0 {
-        let page_width = (width - 3.0 * m - AI_PANEL_WIDTH).max(0.0);
+    if ai_panel && width > left + AI_PANEL_WIDTH + 320.0 {
+        let page_width = (width - left - 2.0 * m - AI_PANEL_WIDTH).max(0.0);
         let panel = Rect { x: width - m - AI_PANEL_WIDTH, y: top, width: AI_PANEL_WIDTH, height: inner_height };
-        (Rect { x: m, y: top, width: page_width, height: inner_height }, Some(panel))
+        (Rect { x: left, y: top, width: page_width, height: inner_height }, Some(panel))
     } else {
-        (Rect { x: m, y: top, width: (width - 2.0 * m).max(0.0), height: inner_height }, None)
+        (Rect { x: left, y: top, width: (width - left - m).max(0.0), height: inner_height }, None)
     }
 }
 
@@ -120,10 +125,24 @@ pub fn window_labels(app: &AppHandle) -> Vec<String> {
 
 /// Where the website area starts.
 pub fn toolbar_height() -> f64 {
+    let base = if VERTICAL_TABS.load(Ordering::SeqCst) { TOOLBAR_VERTICAL } else { TOOLBAR_BASE };
     if SHOW_BOOKMARKS_BAR.load(Ordering::SeqCst) {
-        TOOLBAR_BASE + BOOKMARKS_BAR
+        base + BOOKMARKS_BAR
     } else {
-        TOOLBAR_BASE
+        base
+    }
+}
+
+/// Space at the left of the page: the tab list with vertical tabs.
+pub fn left_space() -> f64 {
+    if VERTICAL_TABS.load(Ordering::SeqCst) { SIDEBAR_WIDTH } else { PAGE_MARGIN }
+}
+
+/// Tabs in a list at the left (like Edge and Brave) instead of a row on top.
+pub fn set_vertical_tabs(app: &AppHandle, on: bool) {
+    if VERTICAL_TABS.swap(on, Ordering::SeqCst) != on {
+        let _ = app.emit("vertical-tabs", on);
+        layout_all(app);
     }
 }
 
@@ -229,7 +248,7 @@ pub fn layout(app: &AppHandle, window: &str) {
     if let Some(toolbar) = app.get_webview(&ui_label(window)) {
         let _ = toolbar.set_size(LogicalSize::new(size.width, size.height));
     }
-    let (page, panel) = page_layout((size.width, size.height), toolbar_height(), state.ai_panel, state.fullscreen);
+    let (page, panel) = page_layout((size.width, size.height), toolbar_height(), left_space(), state.ai_panel, state.fullscreen);
     let radius = if state.fullscreen { 0.0 } else { PAGE_RADIUS };
     for webview in tabs::webviews_of(app, window) {
         let _ = webview.set_position(LogicalPosition::new(page.x, page.y));
@@ -522,16 +541,21 @@ mod tests {
 
     #[test]
     fn page_card_layout() {
-        let (page, panel) = page_layout((1280.0, 800.0), 84.0, false, false);
+        let (page, panel) = page_layout((1280.0, 800.0), 84.0, 8.0, false, false);
         assert_eq!(page, Rect { x: 8.0, y: 84.0, width: 1264.0, height: 708.0 });
         assert!(panel.is_none());
-        let (page, panel) = page_layout((1280.0, 800.0), 84.0, true, false);
+        let (page, panel) = page_layout((1280.0, 800.0), 84.0, 8.0, true, false);
         let panel = panel.unwrap();
         assert_eq!(page.width + panel.width + 3.0 * PAGE_MARGIN, 1280.0);
         assert_eq!(panel.x + panel.width, 1272.0);
         // Too narrow for the panel: the page keeps the space.
-        assert!(page_layout((600.0, 800.0), 84.0, true, false).1.is_none());
-        let (page, _) = page_layout((1280.0, 800.0), 84.0, true, true);
+        assert!(page_layout((600.0, 800.0), 84.0, 8.0, true, false).1.is_none());
+        let (page, _) = page_layout((1280.0, 800.0), 84.0, 8.0, true, true);
+        assert_eq!(page, Rect { x: 0.0, y: 0.0, width: 1280.0, height: 800.0 });
+        // Vertical tabs: the list takes the left side.
+        let (page, _) = page_layout((1280.0, 800.0), 44.0, 240.0, false, false);
+        assert_eq!(page, Rect { x: 240.0, y: 44.0, width: 1032.0, height: 748.0 });
+        let (page, _) = page_layout((1280.0, 800.0), 84.0, 8.0, true, true);
         assert_eq!(page, Rect { x: 0.0, y: 0.0, width: 1280.0, height: 800.0 });
     }
 }

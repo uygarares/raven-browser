@@ -126,6 +126,7 @@ pub fn run() {
             let saved = settings::load(handle);
             let restore = saved.restore_session;
             let restore_autoplay = saved.block_autoplay;
+            let vertical = saved.vertical_tabs;
             app.manage(settings::SettingsState(Mutex::new(saved)));
             app.manage(bookmarks::load(handle));
             app.manage(history::load(handle));
@@ -136,6 +137,7 @@ pub fn run() {
             app.manage(perf::load(handle));
             app.manage(shield::load(handle));
             extensions::BLOCK_AUTOPLAY.store(restore_autoplay, std::sync::atomic::Ordering::Relaxed);
+            windows::set_vertical_tabs(handle, vertical);
             history::start_saving(handle);
             let last_session = session::load(handle);
             bookmarks::refresh_bar(handle);

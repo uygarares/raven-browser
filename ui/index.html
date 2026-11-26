@@ -34,7 +34,7 @@
   </div>
 
   <!-- Row 2: navigation and address bar. -->
-  <div class="nav-row">
+  <div class="nav-row" data-tauri-drag-region>
     <button id="back" class="icon-button" aria-label="Geri" title="Geri">
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
     </button>
@@ -159,6 +159,10 @@
             <option value="dark">Koyu</option>
             <option value="light">Açık</option>
           </select>
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Dikey sekmeler</span><span class="setting-note">Sekmeler üstte değil, solda bir liste olarak durur. Çok sekmede rahat</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="verticalTabs">
         </label>
         <label class="setting">
           <span><span class="setting-name">Yer imleri çubuğu</span><span class="setting-note">Ctrl + Shift + B</span></span>

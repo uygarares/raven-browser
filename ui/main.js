@@ -299,12 +299,13 @@ function tabElement(id) {
 }
 
 function startDrag(tab, event) {
-  drag = { id: tab.id, startX: event.clientX, moved: false };
+  drag = { id: tab.id, startX: event.clientX, startY: event.clientY, moved: false };
 }
 
 document.addEventListener("mousemove", (event) => {
   if (!drag) return;
-  const dx = event.clientX - drag.startX;
+  const vertical = document.body.classList.contains("vertical-tabs");
+  const dx = vertical ? event.clientY - drag.startY : event.clientX - drag.startX;
   if (!drag.moved && Math.abs(dx) < 6) return;
   const el = tabElement(drag.id);
   if (!el) return;
@@ -313,7 +314,7 @@ document.addEventListener("mousemove", (event) => {
     document.body.classList.add("dragging-tab");
     el.classList.add("dragged");
   }
-  el.style.transform = `translateX(${dx}px)`;
+  el.style.transform = vertical ? `translateY(${dx}px)` : `translateX(${dx}px)`;
 });
 
 document.addEventListener("mouseup", (event) => {
@@ -322,11 +323,13 @@ document.addEventListener("mouseup", (event) => {
   drag = null;
   document.body.classList.remove("dragging-tab");
   if (!moved) return;
-  // The new place: how many other tabs have their middle left of the pointer.
+  // The new place: how many other tabs have their middle before the pointer
+  // (left of it, or above it with vertical tabs).
+  const vertical = document.body.classList.contains("vertical-tabs");
   const others = [...tabsEl.querySelectorAll(".tab")].filter((el) => el.dataset.id !== String(id));
   const index = others.filter((el) => {
     const rect = el.getBoundingClientRect();
-    return rect.left + rect.width / 2 < event.clientX;
+    return vertical ? rect.top + rect.height / 2 < event.clientY : rect.left + rect.width / 2 < event.clientX;
   }).length;
   const el = tabElement(id);
   if (el) {
@@ -865,6 +868,7 @@ function applyLook() {
   const appearance = settings.appearance === "system" ? (systemDark.matches ? "dark" : "light") : settings.appearance;
   document.documentElement.dataset.appearance = appearance;
   document.documentElement.dataset.accent = settings.accent;
+  document.body.classList.toggle("vertical-tabs", Boolean(settings.verticalTabs));
   // The new tab page and the menus read these.
   try {
     localStorage.setItem("raven-appearance", appearance);
@@ -1383,10 +1387,13 @@ tabsEl.addEventListener("mouseover", (event) => {
     if (!tab || (popupKind && popupKind !== "tab-card")) return;
     cardFor = id;
     const rect = el.getBoundingClientRect();
+    const vertical = document.body.classList.contains("vertical-tabs");
     openPopup(
       "tab-card",
       { title: tab.title, url: tab.url, memory: tab.memory, asleep: tab.asleep && tab.id !== state.active, audible: tab.audible },
-      { x: Math.max(8, rect.left), y: rect.bottom + 6, width: 300, height: 92, focus: false },
+      vertical
+        ? { x: rect.right + 10, y: rect.top - 4, width: 300, height: 92, focus: false }
+        : { x: Math.max(8, rect.left), y: rect.bottom + 6, width: 300, height: 92, focus: false },
     );
   }, cardFor ? 80 : 550);
 });
@@ -1436,6 +1443,7 @@ function showToast(text) {
 listenHere("toast", (payload) => showToast(payload.text));
 
 // Game mode badge.
+listen("vertical-tabs", ({ payload }) => document.body.classList.toggle("vertical-tabs", payload));
 listen("game-mode", ({ payload }) => document.body.classList.toggle("game-mode", payload));
 
 // Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
