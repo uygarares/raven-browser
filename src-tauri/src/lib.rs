@@ -81,6 +81,8 @@ pub fn run() {
             settings::clear_data,
             settings::get_engine_version,
             tabs::get_closed_tabs,
+            bookmarks::export_bookmarks_html,
+            bookmarks::import_bookmarks_html,
             permissions::get_forget_site,
             permissions::set_forget_site,
             suggest::search_suggestions,

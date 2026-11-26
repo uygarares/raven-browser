@@ -1425,6 +1425,28 @@ document.getElementById("backup-import").addEventListener("change", async (event
   event.target.value = "";
 });
 
+// Bookmarks as an HTML file, for other browsers.
+const bookmarksFileStatus = document.getElementById("bookmarks-file-status");
+document.getElementById("bookmarks-html-import").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const added = await invoke("import_bookmarks_html", { text: await file.text() });
+    bookmarksFileStatus.textContent = added ? `${added} yer imi eklendi` : "Bu yer imlerinin hepsi zaten vardı";
+  } catch (error) {
+    bookmarksFileStatus.textContent = String(error);
+  }
+  event.target.value = "";
+});
+document.getElementById("bookmarks-html-export").addEventListener("click", async () => {
+  try {
+    const name = await invoke("export_bookmarks_html");
+    bookmarksFileStatus.textContent = `İndirilenler klasörüne kaydedildi: ${name}`;
+  } catch (error) {
+    bookmarksFileStatus.textContent = String(error);
+  }
+});
+
 // Sync with the user's own Supabase project (sync.js does the encryption).
 const syncStatus = document.getElementById("sync-status");
 const syncLast = document.getElementById("sync-last");
