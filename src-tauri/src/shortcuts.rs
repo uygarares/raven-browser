@@ -21,10 +21,14 @@ pub enum Action {
     /// Tab number 1 to 8, counted from the left (0-based here).
     GoToTab(usize),
     LastTab,
+    OpenHistory,
+    ToggleBookmark,
+    ToggleBookmarksBar,
 }
 
 /// Matches a key press to an action, like Chrome: Ctrl+T, Ctrl+W, Ctrl+Shift+T,
-/// Ctrl+L, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+PageDown, Ctrl+PageUp, Ctrl+1..8, Ctrl+9.
+/// Ctrl+L, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+PageDown, Ctrl+PageUp, Ctrl+1..8, Ctrl+9,
+/// Ctrl+H (history), Ctrl+D (bookmark), Ctrl+Shift+B (bookmarks bar).
 /// `key` is the Windows virtual key code.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
@@ -40,6 +44,9 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
         (0x09, true) | (0x21, false) => Action::PreviousTab, // Shift+Tab, PageUp
         (0x31..=0x38, false) => Action::GoToTab((key - 0x31) as usize), // 1..8
         (0x39, false) => Action::LastTab,     // 9
+        (0x48, false) => Action::OpenHistory, // H
+        (0x44, false) => Action::ToggleBookmark, // D
+        (0x42, true) => Action::ToggleBookmarksBar, // Shift+B
         _ => return None,
     };
     Some(action)
@@ -69,6 +76,15 @@ pub fn perform(app: &AppHandle, action: Action) {
             Action::PreviousTab => tabs::switch_relative(&app, -1),
             Action::GoToTab(index) => tabs::switch_to_index(&app, index),
             Action::LastTab => tabs::switch_to_last(&app),
+            Action::OpenHistory => {
+                if let Some(toolbar) = app.get_webview("ui") {
+                    let _ = toolbar.set_focus();
+                }
+                let _ = app.emit("open-history", ());
+                Ok(())
+            }
+            Action::ToggleBookmark => crate::bookmarks::toggle_active(&app).map(|_| ()),
+            Action::ToggleBookmarksBar => crate::bookmarks::toggle_bar(&app),
         };
         if let Err(error) = result {
             eprintln!("Shortcut {action:?} failed: {error}");
@@ -143,6 +159,9 @@ mod tests {
         assert_eq!(from_key(true, false, 0x31), Some(Action::GoToTab(0)));
         assert_eq!(from_key(true, false, 0x38), Some(Action::GoToTab(7)));
         assert_eq!(from_key(true, false, 0x39), Some(Action::LastTab));
+        assert_eq!(from_key(true, false, 0x48), Some(Action::OpenHistory));
+        assert_eq!(from_key(true, false, 0x44), Some(Action::ToggleBookmark));
+        assert_eq!(from_key(true, true, 0x42), Some(Action::ToggleBookmarksBar));
     }
 
     #[test]

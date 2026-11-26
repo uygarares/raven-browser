@@ -89,6 +89,7 @@ function render() {
     }
     loading.classList.toggle("on", active.loading && active.url !== "");
   }
+  renderStar();
 }
 
 listen("tabs", ({ payload }) => {
@@ -101,6 +102,230 @@ invoke("get_tabs").then((payload) => {
   render();
 });
 
+// Bookmarks
+
+const star = document.getElementById("star");
+const bar = document.getElementById("bookmarks-bar");
+let bookmarks = [];
+
+function activeTab() {
+  return state.tabs.find((tab) => tab.id === state.active);
+}
+
+function renderStar() {
+  const tab = activeTab();
+  const url = tab ? tab.url : "";
+  star.hidden = url === "";
+  const saved = bookmarks.some((bookmark) => bookmark.url === url);
+  star.setAttribute("aria-pressed", String(saved));
+  const label = saved ? "Yer iminden kaldır (Ctrl + D)" : "Yer imlerine ekle (Ctrl + D)";
+  star.setAttribute("aria-label", label);
+  star.title = label;
+}
+
+function letterOf(url, fallback) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").charAt(0).toUpperCase();
+  } catch {
+    return (fallback || "?").charAt(0).toUpperCase();
+  }
+}
+
+function renderBookmarks() {
+  bar.replaceChildren(
+    ...bookmarks.map((bookmark) => {
+      const button = document.createElement("button");
+      button.className = "bookmark";
+      button.title = `${bookmark.title}\n${bookmark.url}\nSağ tık: kaldır`;
+      const mark = document.createElement("span");
+      mark.className = "mark-small";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = letterOf(bookmark.url, bookmark.title);
+      const title = document.createElement("span");
+      title.className = "bookmark-title";
+      title.textContent = bookmark.title;
+      button.append(mark, title);
+      button.addEventListener("click", (event) => {
+        closeHistory();
+        run("open_url", { url: bookmark.url, newTab: event.ctrlKey });
+      });
+      button.addEventListener("auxclick", (event) => {
+        if (event.button === 1) run("open_url", { url: bookmark.url, newTab: true });
+      });
+      button.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        run("remove_bookmark", { id: bookmark.id });
+      });
+      return button;
+    }),
+  );
+  renderStar();
+}
+
+star.addEventListener("click", () => run("toggle_bookmark"));
+
+listen("bookmarks", ({ payload }) => {
+  bookmarks = payload;
+  renderBookmarks();
+});
+invoke("get_bookmarks").then((payload) => {
+  bookmarks = payload;
+  renderBookmarks();
+});
+
+function showBookmarksBar(show) {
+  document.body.classList.toggle("with-bookmarks-bar", show);
+}
+listen("bookmarks-bar", ({ payload }) => showBookmarksBar(payload));
+invoke("get_bookmarks_bar").then(showBookmarksBar);
+
+// History panel
+
+const historyPanel = document.getElementById("history-panel");
+const historyList = document.getElementById("history-list");
+const historyEmpty = document.getElementById("history-empty");
+const historySearch = document.getElementById("history-search");
+const historyClear = document.getElementById("history-clear");
+
+const dayFormat = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" });
+const clockFormat = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" });
+
+function dayLabel(date) {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return "Bugün";
+  if (date.toDateString() === yesterday.toDateString()) return "Dün";
+  return dayFormat.format(date);
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+async function loadHistory() {
+  const entries = (await run("get_history", { query: historySearch.value })) || [];
+  historyEmpty.hidden = entries.length > 0;
+  historyEmpty.textContent = historySearch.value ? "Sonuç yok" : "Henüz geçmiş yok";
+  const items = [];
+  let lastDay = "";
+  for (const entry of entries) {
+    const date = new Date(entry.time);
+    const day = dayLabel(date);
+    if (day !== lastDay) {
+      const heading = document.createElement("h2");
+      heading.className = "history-day";
+      heading.textContent = day;
+      items.push(heading);
+      lastDay = day;
+    }
+    const row = document.createElement("div");
+    row.className = "history-row";
+
+    const time = document.createElement("span");
+    time.className = "history-time";
+    time.textContent = clockFormat.format(date);
+
+    const link = document.createElement("button");
+    link.className = "history-link";
+    link.title = entry.url;
+    const mark = document.createElement("span");
+    mark.className = "mark-small";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = letterOf(entry.url, entry.title);
+    const title = document.createElement("span");
+    title.className = "history-title";
+    title.textContent = entry.title || entry.url;
+    const host = document.createElement("span");
+    host.className = "history-host";
+    host.textContent = hostOf(entry.url);
+    link.append(mark, title, host);
+    link.addEventListener("click", (event) => {
+      closeHistory();
+      run("open_url", { url: entry.url, newTab: event.ctrlKey });
+    });
+    link.addEventListener("auxclick", (event) => {
+      if (event.button === 1) run("open_url", { url: entry.url, newTab: true });
+    });
+
+    const remove = document.createElement("button");
+    remove.className = "icon-button history-remove";
+    remove.setAttribute("aria-label", "Geçmişten kaldır");
+    remove.title = "Geçmişten kaldır";
+    remove.innerHTML =
+      '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    remove.addEventListener("click", async () => {
+      await run("remove_history_entry", { url: entry.url, time: entry.time });
+      loadHistory();
+    });
+
+    row.append(time, link, remove);
+    items.push(row);
+  }
+  historyList.replaceChildren(...items);
+}
+
+let searchTimer = null;
+historySearch.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadHistory, 150);
+});
+
+historyClear.addEventListener("click", async () => {
+  // Ask once more before deleting everything.
+  if (historyClear.dataset.confirm !== "yes") {
+    historyClear.dataset.confirm = "yes";
+    historyClear.textContent = "Emin misin? Tekrar bas";
+    setTimeout(() => {
+      historyClear.dataset.confirm = "";
+      historyClear.textContent = "Tümünü temizle";
+    }, 3000);
+    return;
+  }
+  historyClear.dataset.confirm = "";
+  historyClear.textContent = "Tümünü temizle";
+  await run("clear_history");
+  loadHistory();
+});
+
+function historyOpen() {
+  return !historyPanel.hidden;
+}
+
+async function openHistory() {
+  historySearch.value = "";
+  historyPanel.hidden = false;
+  await run("set_full_window", { open: true });
+  await loadHistory();
+  historySearch.focus();
+}
+
+function closeHistory() {
+  if (!historyOpen()) return;
+  historyPanel.hidden = true;
+  run("set_full_window", { open: false });
+}
+
+document.getElementById("history").addEventListener("click", () => {
+  if (historyOpen()) closeHistory();
+  else openHistory();
+});
+document.getElementById("history-close").addEventListener("click", closeHistory);
+listen("open-history", openHistory);
+
+// Using the tabs or the address bar closes the panel.
+tabsEl.addEventListener("mousedown", closeHistory);
+document.getElementById("new-tab").addEventListener("click", closeHistory);
+document.getElementById("address-form").addEventListener("submit", closeHistory);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && historyOpen()) closeHistory();
+});
+
 // Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
 // catches them itself (src-tauri/src/shortcuts.rs); these cover the toolbar.
 function actionFor(event) {
@@ -108,7 +333,13 @@ function actionFor(event) {
   const key = event.key.toLowerCase();
   const shift = event.shiftKey;
   if (key === "t") return shift ? "reopen-tab" : "new-tab";
-  if (shift) return key === "tab" ? "previous-tab" : null;
+  if (shift) {
+    if (key === "tab") return "previous-tab";
+    if (key === "b") return "toggle-bookmarks-bar";
+    return null;
+  }
+  if (key === "h") return "open-history";
+  if (key === "d") return "toggle-bookmark";
   if (key === "w") return "close-tab";
   if (key === "l") return "focus-address";
   if (key === "tab" || key === "pagedown") return "next-tab";
@@ -123,8 +354,13 @@ document.addEventListener("keydown", (event) => {
   if (!action) return;
   event.preventDefault();
   if (action === "focus-address") {
+    closeHistory();
     address.focus();
+  } else if (action === "open-history") {
+    if (historyOpen()) closeHistory();
+    else openHistory();
   } else {
+    if (typeof action === "string" && action.endsWith("-tab")) closeHistory();
     run("run_action", { action });
   }
 });

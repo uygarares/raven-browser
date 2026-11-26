@@ -24,11 +24,21 @@ pub struct Settings {
     pub glass_tint: f32,
     /// False until the user picked a theme on the first launch.
     pub onboarded: bool,
+    /// Reopen the last tabs when Raven starts.
+    pub restore_session: bool,
+    /// Show the bookmarks bar under the address bar (Ctrl+Shift+B).
+    pub show_bookmarks_bar: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { theme: Theme::Solid, glass_tint: 0.3, onboarded: false }
+        Settings {
+            theme: Theme::Solid,
+            glass_tint: 0.3,
+            onboarded: false,
+            restore_session: true,
+            show_bookmarks_bar: true,
+        }
     }
 }
 
@@ -54,7 +64,7 @@ pub fn load(app: &AppHandle) -> Settings {
         .clamped()
 }
 
-fn store(app: &AppHandle, settings: &Settings) -> Result<(), String> {
+pub fn store(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let path = file(app).ok_or("No settings folder")?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -89,6 +99,8 @@ mod tests {
         assert_eq!(settings.theme, Theme::Glass);
         assert_eq!(settings.glass_tint, 0.3);
         assert!(!settings.onboarded);
+        assert!(settings.restore_session);
+        assert!(settings.show_bookmarks_bar);
     }
 
     #[test]

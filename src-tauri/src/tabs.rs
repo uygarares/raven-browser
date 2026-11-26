@@ -1,4 +1,8 @@
-//! Tabs: each tab is its own webview inside the main window.
+//! Tabs: each awake tab is its own webview inside the main window.
+//!
+//! A tab can also be asleep: it is listed in the tab row, but has no webview and
+//! uses no memory until you click it. Tabs restored from the last session start
+//! asleep (except the active one).
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -9,7 +13,7 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webview, WebviewUrl,
 };
 
-use crate::TOOLBAR_HEIGHT;
+use crate::{history, session, toolbar_height};
 
 pub const HOME_URL: &str = "https://www.google.com";
 /// Opens Raven's own new tab page (ui/newtab.html).
@@ -23,8 +27,11 @@ const NEW_TAB_TITLE: &str = "Yeni sekme";
 pub struct TabInfo {
     id: u32,
     title: String,
+    /// Empty for Raven's new tab page.
     url: String,
     loading: bool,
+    /// No webview yet: the page loads when the tab is opened.
+    asleep: bool,
 }
 
 #[derive(Default)]
@@ -94,9 +101,25 @@ fn snapshot(app: &AppHandle) -> TabsState {
     })
 }
 
-/// Tells the toolbar what the tabs look like now.
+/// Tells the toolbar what the tabs look like now, and saves the session.
 fn publish(app: &AppHandle) {
-    let _ = app.emit("tabs", snapshot(app));
+    let state = snapshot(app);
+    let active = state
+        .active
+        .and_then(|id| state.tabs.iter().position(|tab| tab.id == id))
+        .unwrap_or(0);
+    session::save(
+        app,
+        session::Session {
+            tabs: state
+                .tabs
+                .iter()
+                .map(|tab| session::SavedTab { url: tab.url.clone(), title: tab.title.clone() })
+                .collect(),
+            active,
+        },
+    );
+    let _ = app.emit("tabs", state);
 }
 
 fn update_tab(app: &AppHandle, id: u32, change: impl FnOnce(&mut TabInfo)) {
@@ -129,25 +152,48 @@ pub fn to_url(input: &str) -> Result<Url, String> {
     Url::parse_with_params(SEARCH_URL, &[("q", text)]).map_err(|e| format!("{e}"))
 }
 
-/// Opens a new tab. Must not be called from a webview event handler (use a spawned task).
-pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u32> {
+/// Adds a tab to the list, without a webview yet.
+fn add_tab(app: &AppHandle, url: &str, title: &str) -> u32 {
     let new_tab = is_new_tab_url(url);
-    let target = if new_tab {
-        WebviewUrl::App(NEW_TAB_PAGE.into())
-    } else {
-        WebviewUrl::External(url.parse().map_err(|_| tauri::Error::InvalidWebviewUrl("bad url"))?)
-    };
-    let shown_url = if new_tab { String::new() } else { url.to_string() };
-    let id = with_tabs(app, |list| {
+    with_tabs(app, |list| {
         list.next_id += 1;
         let id = list.next_id;
         list.order.push(id);
         list.info.insert(
             id,
-            TabInfo { id, title: NEW_TAB_TITLE.into(), url: shown_url, loading: true },
+            TabInfo {
+                id,
+                title: if title.is_empty() { NEW_TAB_TITLE.into() } else { title.into() },
+                url: if new_tab { String::new() } else { url.to_string() },
+                loading: false,
+                asleep: true,
+            },
         );
         id
-    });
+    })
+}
+
+/// Adds a restored tab that loads only when it is opened.
+pub fn add_sleeping_tab(app: &AppHandle, url: &str, title: &str) -> u32 {
+    add_tab(app, url, title)
+}
+
+/// Creates the webview of a tab and loads its page.
+fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
+    let url = with_tabs(app, |list| {
+        let info = list.info.get_mut(&id)?;
+        info.asleep = false;
+        info.loading = true;
+        Some(info.url.clone())
+    })
+    .ok_or(tauri::Error::WebviewNotFound)?;
+
+    let new_tab = is_new_tab_url(&url);
+    let target = if new_tab {
+        WebviewUrl::App(NEW_TAB_PAGE.into())
+    } else {
+        WebviewUrl::External(url.parse().map_err(|_| tauri::Error::InvalidWebviewUrl("bad url"))?)
+    };
 
     let window = app.get_window("main").ok_or(tauri::Error::WindowNotFound)?;
     let scale = window.scale_factor()?;
@@ -157,7 +203,7 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
     let on_title = app.clone();
     let on_popup = app.clone();
     let builder = WebviewBuilder::new(label(id), target)
-        .background_color(background_for(if new_tab { NEW_TAB } else { url }))
+        .background_color(background_for(&url))
         .on_page_load(move |webview, payload| {
             let loading = matches!(payload.event(), PageLoadEvent::Started);
             let mut url = payload.url().to_string();
@@ -167,18 +213,26 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
             if is_new_tab_url(&url) {
                 // The address bar stays empty on the new tab page, like other browsers.
                 url = String::new();
+            } else if !loading {
+                // The title usually arrives before the page finishes loading.
+                let title = with_tabs(&on_load, |list| {
+                    list.info.get(&id).map(|tab| tab.title.clone()).unwrap_or_default()
+                });
+                history::record(&on_load, &url, &title);
             }
             update_tab(&on_load, id, |tab| {
                 tab.url = url;
                 tab.loading = loading;
             });
         })
-        .on_document_title_changed(move |_webview, title| {
-            update_tab(&on_title, id, |tab| {
-                if !title.trim().is_empty() {
-                    tab.title = title;
-                }
-            });
+        .on_document_title_changed(move |webview, title| {
+            if title.trim().is_empty() {
+                return;
+            }
+            if let Ok(url) = webview.url() {
+                history::set_title(&on_title, url.as_str(), &title);
+            }
+            update_tab(&on_title, id, |tab| tab.title = title);
         })
         // Links that open a new window open in a new Raven tab instead.
         .on_new_window(move |url, _features| {
@@ -189,37 +243,46 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
             NewWindowResponse::Deny
         });
 
+    let top = toolbar_height();
     let webview = window.add_child(
         builder,
-        LogicalPosition::new(0.0, TOOLBAR_HEIGHT),
-        LogicalSize::new(size.width, (size.height - TOOLBAR_HEIGHT).max(0.0)),
+        LogicalPosition::new(0.0, top),
+        LogicalSize::new(size.width, (size.height - top).max(0.0)),
     )?;
     crate::shortcuts::listen_in_tab(app, &webview);
     if crate::is_full_window() {
         crate::layout(app);
     }
+    Ok(webview)
+}
 
+/// Opens a new tab. Must not be called from a webview event handler (use a spawned task).
+pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u32> {
+    let id = add_tab(app, url, "");
     if activate {
         show_only(app, id);
     } else {
-        let _ = webview.hide();
+        wake(app, id)?.hide()?;
         publish(app);
     }
     Ok(id)
 }
 
-/// Shows one tab and hides the others. The new tab is shown before the others
-/// are hidden, so nothing flashes in between.
-fn show_only(app: &AppHandle, id: u32) {
+/// Shows one tab (waking it if it is asleep) and hides the others. The new tab is
+/// shown before the others are hidden, so nothing flashes in between.
+pub fn show_only(app: &AppHandle, id: u32) {
     with_tabs(app, |list| list.active = Some(id));
     let target = label(id);
-    let webviews = app.webviews();
+    let target_webview = match app.get_webview(&target) {
+        Some(webview) => Some(webview),
+        None => wake(app, id).map_err(|e| eprintln!("Could not open tab: {e}")).ok(),
+    };
     if !crate::is_full_window() {
-        if let Some(webview) = webviews.get(&target) {
+        if let Some(webview) = target_webview {
             let _ = webview.show();
         }
     }
-    for (name, webview) in webviews {
+    for (name, webview) in app.webviews() {
         if is_tab_label(&name) && name != target {
             let _ = webview.hide();
         }
@@ -262,9 +325,24 @@ fn active_tab(app: &AppHandle) -> Result<Webview, String> {
         .ok_or_else(|| "No open tab".to_string())
 }
 
+/// The address and title of the active tab (empty address on the new tab page).
+pub fn active_page(app: &AppHandle) -> Option<(String, String)> {
+    with_tabs(app, |list| {
+        let id = list.active?;
+        let info = list.info.get(&id)?;
+        Some((info.url.clone(), info.title.clone()))
+    })
+}
+
 /// Opens a tab and shows it.
 pub fn open_tab(app: &AppHandle, url: &str) -> Result<u32, String> {
     create_tab(app, url, true).map_err(|e| e.to_string())
+}
+
+/// Loads an address in the active tab.
+pub fn open_here(app: &AppHandle, url: &str) -> Result<(), String> {
+    let url: Url = url.parse().map_err(|e| format!("{e}"))?;
+    active_tab(app)?.navigate(url).map_err(|e| e.to_string())
 }
 
 /// Closes a tab. Closing the last tab closes Raven, like other browsers.
@@ -372,7 +450,7 @@ pub async fn new_tab(app: AppHandle) -> Result<u32, String> {
 
 #[tauri::command]
 pub async fn switch_tab(app: AppHandle, id: u32) -> Result<(), String> {
-    if app.get_webview(&label(id)).is_none() {
+    if !with_tabs(&app, |list| list.info.contains_key(&id)) {
         return Err("Tab not found".into());
     }
     show_only(&app, id);
@@ -382,6 +460,16 @@ pub async fn switch_tab(app: AppHandle, id: u32) -> Result<(), String> {
 #[tauri::command]
 pub async fn close_tab(app: AppHandle, id: u32) -> Result<(), String> {
     close(&app, id)
+}
+
+/// Opens an address from a bookmark or the history, here or in a new tab.
+#[tauri::command]
+pub async fn open_url(app: AppHandle, url: String, new_tab: bool) -> Result<(), String> {
+    if new_tab {
+        open_tab(&app, &url).map(|_| ())
+    } else {
+        open_here(&app, &url)
+    }
 }
 
 #[tauri::command]
@@ -407,7 +495,7 @@ pub async fn reload(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::to_url;
+    use super::{is_new_tab_url, to_url};
 
     #[test]
     fn keeps_full_urls() {
@@ -430,11 +518,6 @@ mod tests {
     fn empty_goes_home() {
         assert_eq!(to_url("  ").unwrap().as_str(), "https://www.google.com/");
     }
-}
-
-#[cfg(test)]
-mod new_tab_tests {
-    use super::is_new_tab_url;
 
     #[test]
     fn recognizes_the_new_tab_page() {

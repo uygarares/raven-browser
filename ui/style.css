@@ -4,7 +4,11 @@
   /* Must match TOOLBAR_HEIGHT in src-tauri/src/lib.rs (tab row + nav row). */
   --toolbar-height: 84px;
   --tab-row-height: 40px;
+  --nav-row-height: 44px;
+  /* Must match BOOKMARKS_BAR in src-tauri/src/lib.rs. */
+  --bookmarks-bar-height: 32px;
 }
+body.with-bookmarks-bar { --toolbar-height: calc(84px + var(--bookmarks-bar-height)); }
 
 * { box-sizing: border-box; }
 
@@ -135,7 +139,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 /* Row 2: navigation */
 
 .nav-row {
-  height: calc(var(--toolbar-height) - var(--tab-row-height));
+  height: var(--nav-row-height);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -143,6 +147,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   background: var(--bar);
   border-bottom: 1px solid var(--hairline);
 }
+body.with-bookmarks-bar .nav-row { border-bottom: 0; }
 
 .address {
   flex: 1;
@@ -173,6 +178,11 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 }
 .address input::placeholder { color: var(--text-3); }
 
+.star { width: 24px; height: 24px; border-radius: 6px; margin-right: -6px; }
+.star[aria-pressed="true"] { color: var(--accent); }
+.star[aria-pressed="true"] svg { fill: currentColor; }
+.star[hidden] { display: none; }
+
 .spinner {
   width: 12px;
   height: 12px;
@@ -192,3 +202,154 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+/* Row 3: bookmarks bar */
+
+.bookmarks-bar {
+  display: none;
+  height: var(--bookmarks-bar-height);
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 4px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--hairline);
+  overflow: hidden;
+}
+body.with-bookmarks-bar .bookmarks-bar { display: flex; }
+
+.bookmark {
+  flex: none;
+  max-width: 180px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: 400 12px var(--font);
+  transition: background-color 150ms var(--ease), color 150ms var(--ease);
+}
+.bookmark:hover { background: var(--hover); color: var(--text); }
+.bookmark-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.mark-small {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(238, 240, 245, 0.10);
+  display: grid;
+  place-items: center;
+  font: 500 9px var(--font);
+  color: var(--text);
+}
+
+/* Full-window panels (history). The tab and address rows stay usable above. */
+
+.panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--toolbar-height);
+  bottom: 0;
+  overflow: auto;
+  background: var(--page);
+}
+.panel[hidden] { display: none; }
+
+.panel-inner {
+  width: min(760px, 100% - 48px);
+  margin: 0 auto;
+  padding: 40px 0 64px;
+}
+
+.panel-head { display: flex; align-items: center; gap: 12px; }
+.panel-head h1 { flex: 1; margin: 0; font: 400 28px/1.15 var(--font-display); }
+
+.secondary {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--tile);
+  color: var(--text);
+  font: 400 13px var(--font);
+  transition: background-color 150ms var(--ease);
+}
+.secondary:hover { background: var(--hover); }
+
+.panel-search {
+  margin-top: 24px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--tile);
+  color: var(--text-3);
+}
+.panel-search:focus-within { border-color: var(--accent); }
+.panel-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: 400 14px var(--font);
+  user-select: text;
+}
+.panel-search input::placeholder { color: var(--text-3); }
+
+.history-day {
+  margin: 32px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 4px 0 8px;
+  border-radius: 8px;
+  cursor: default;
+  transition: background-color 150ms var(--ease);
+}
+.history-row:hover { background: var(--hover); }
+
+.history-time {
+  flex: none;
+  width: 40px;
+  font: 400 12px var(--mono);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 400 14px var(--font);
+  text-align: left;
+  padding: 0;
+}
+.history-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-host { flex: none; color: var(--text-3); font-size: 13px; }
+
+.history-remove { width: 28px; height: 28px; opacity: 0; }
+.history-row:hover .history-remove, .history-remove:focus-visible { opacity: 1; }
+
+.empty { margin-top: 32px; color: var(--text-3); font-size: 14px; }
