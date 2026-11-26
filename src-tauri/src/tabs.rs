@@ -451,6 +451,10 @@ pub fn all_tabs(app: &AppHandle) -> Vec<TabUse> {
 /// Puts a tab to sleep: its page is closed to free memory and loads again
 /// when the tab is opened. Returns false for tabs that must stay awake.
 pub fn sleep_tab(app: &AppHandle, id: u32) -> bool {
+    // The right-hand tab of split view is on screen.
+    if window_of_tab(app, id).is_some_and(|w| windows::split_of(app, &w) == Some(id)) {
+        return false;
+    }
     let window = with_tabs(app, |list| {
         let info = list.info.get(&id)?;
         let active = list.windows.get(&info.window).and_then(|w| w.active) == Some(id);
