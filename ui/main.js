@@ -688,7 +688,7 @@ historyClear.addEventListener("click", async () => {
 const panels = {
   history: { el: historyPanel, load: loadHistory, focus: historySearch },
   downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
-  settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings(); showMemory(); loadImportSources(); } },
+  settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings(); showMemory(); loadImportSources(); showDefault(); } },
   archive: { el: document.getElementById("archive-panel"), load: loadArchive },
   extensions: { el: document.getElementById("extensions-panel"), load: loadExtensions },
 };
@@ -963,6 +963,24 @@ async function showMemory() {
   note.textContent = `${total} · ${info.awake} açık, ${info.asleep} uyuyan sekme`;
 }
 document.getElementById("memory-refresh").addEventListener("click", showMemory);
+
+// Default browser.
+const defaultButton = document.getElementById("default-browser");
+async function showDefault() {
+  const yes = await run("is_default_browser");
+  defaultButton.hidden = Boolean(yes);
+  document.getElementById("default-status").textContent = yes
+    ? "Raven varsayılan tarayıcın. Linkler Raven'da açılıyor"
+    : "Başka programlarda tıkladığın linkler Raven'da açılır";
+}
+defaultButton.addEventListener("click", async () => {
+  try {
+    await invoke("make_default_browser");
+    document.getElementById("default-status").textContent = "Açılan Windows penceresinde Raven'ı seç";
+  } catch (error) {
+    document.getElementById("default-status").textContent = String(error);
+  }
+});
 
 // Import from other browsers.
 const importButtons = document.getElementById("import-buttons");

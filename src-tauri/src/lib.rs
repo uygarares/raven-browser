@@ -8,6 +8,7 @@
 
 mod ai;
 mod bookmarks;
+mod default_browser;
 mod downloads;
 mod extensions;
 mod find;
@@ -35,6 +36,19 @@ use tauri::{Manager, RunEvent};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        // A second Raven (a link clicked in another program) hands its address
+        // to the one already running and quits.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                match default_browser::url_in_args(&args) {
+                    Some(url) => default_browser::open_from_outside(&app, &url),
+                    None => {
+                        let _ = windows::new_window(&app, false);
+                    }
+                }
+            });
+        }))
         .manage(tabs::Tabs::default())
         .manage(windows::Windows::default())
         .invoke_handler(tauri::generate_handler![
@@ -89,6 +103,8 @@ pub fn run() {
             shield::update_shield_lists,
             find::find_in_page,
             find::stop_finding,
+            default_browser::is_default_browser,
+            default_browser::make_default_browser,
             ai::get_ai_providers,
             ai::toggle_ai_panel,
             ai::set_ai_provider,
@@ -130,6 +146,11 @@ pub fn run() {
                 for saved in &saved_windows {
                     windows::open_window(handle, false, Some(saved))?;
                 }
+            }
+            // Started with a link (Raven is the default browser).
+            let args: Vec<String> = std::env::args().collect();
+            if let Some(url) = default_browser::url_in_args(&args) {
+                default_browser::open_from_outside(handle, &url);
             }
             extensions::start(handle);
             perf::start(handle);
