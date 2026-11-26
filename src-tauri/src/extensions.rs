@@ -70,8 +70,17 @@ fn save(app: &AppHandle) {
 /// Every Raven webview must have extensions turned on: WebView2 refuses to
 /// start webviews with different settings in the same data folder.
 pub fn allow<R: Runtime>(builder: WebviewBuilder<R>) -> WebviewBuilder<R> {
-    builder.browser_extensions_enabled(true)
+    // Tauri's own WebView2 arguments, plus Raven's. They must be the same for
+    // every webview too, so the autoplay setting applies after a restart.
+    let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
+    if BLOCK_AUTOPLAY.load(std::sync::atomic::Ordering::Relaxed) {
+        args.push_str(" --autoplay-policy=document-user-activation-required");
+    }
+    builder.browser_extensions_enabled(true).additional_browser_args(&args)
 }
+
+/// "Videolar kendiliğinden başlamasın", read once when Raven starts.
+pub static BLOCK_AUTOPLAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// A Chrome Web Store id is 32 letters from a to p.
 fn is_store_id(text: &str) -> bool {
@@ -273,7 +282,10 @@ pub fn install(app: &AppHandle, store_id: &str) -> Result<(), String> {
 
 /// On the first start, adds the ad blocker (uBlock Origin Lite) in the background.
 pub fn start(app: &AppHandle) {
-    if !cfg!(windows) || app.state::<Extensions>().saved.lock().unwrap().adblock_added {
+    // Raven Shield (shield.rs) blocks ads now; uBlock Origin Lite is only added
+    // when the user asks for it.
+    let wanted = false;
+    if !wanted || !cfg!(windows) || app.state::<Extensions>().saved.lock().unwrap().adblock_added {
         return;
     }
     let app = app.clone();

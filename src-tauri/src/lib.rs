@@ -6,14 +6,21 @@
 // Windows callbacks run inside unsafe blocks; nested ones are fine.
 #![cfg_attr(windows, allow(unused_unsafe))]
 
+mod ai;
 mod bookmarks;
 mod downloads;
 mod extensions;
+mod find;
 mod history;
+mod import;
 mod media;
+mod native;
+mod perf;
 mod permissions;
+mod reader;
 mod session;
 mod settings;
+mod shield;
 mod shortcuts;
 mod storage;
 mod suggest;
@@ -70,6 +77,23 @@ pub fn run() {
             extensions::remove_extension,
             extensions::open_extension_options,
             extensions::open_extension_store,
+            perf::get_archive,
+            perf::open_archived,
+            perf::clear_archive,
+            perf::get_memory,
+            reader::toggle_reader,
+            import::get_import_sources,
+            import::import_browser,
+            shield::get_shield,
+            shield::set_shield_for_site,
+            shield::update_shield_lists,
+            find::find_in_page,
+            find::stop_finding,
+            ai::get_ai_providers,
+            ai::toggle_ai_panel,
+            ai::set_ai_provider,
+            ai::reload_ai,
+            ai::ask_ai,
             windows::get_window_info,
             windows::set_full_window_command,
             windows::open_popup_command,
@@ -83,6 +107,7 @@ pub fn run() {
             let handle = app.handle();
             let saved = settings::load(handle);
             let restore = saved.restore_session;
+            let restore_autoplay = saved.block_autoplay;
             app.manage(settings::SettingsState(Mutex::new(saved)));
             app.manage(bookmarks::load(handle));
             app.manage(history::load(handle));
@@ -90,6 +115,9 @@ pub fn run() {
             app.manage(zoom::load(handle));
             app.manage(permissions::load(handle));
             app.manage(extensions::load(handle));
+            app.manage(perf::load(handle));
+            app.manage(shield::load(handle));
+            extensions::BLOCK_AUTOPLAY.store(restore_autoplay, std::sync::atomic::Ordering::Relaxed);
             history::start_saving(handle);
             let last_session = session::load(handle);
             bookmarks::refresh_bar(handle);
@@ -104,6 +132,8 @@ pub fn run() {
                 }
             }
             extensions::start(handle);
+            perf::start(handle);
+            shield::start(handle);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -113,6 +143,7 @@ pub fn run() {
         // Save the history that has not been written yet.
         if let RunEvent::Exit = event {
             history::flush(app);
+            shield::flush(app);
         }
     });
 }

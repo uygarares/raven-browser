@@ -30,6 +30,32 @@ pub struct Settings {
     pub show_bookmarks_bar: bool,
     /// Search engine for the address bar and the new tab page (see SEARCH_ENGINES).
     pub search_engine: String,
+    /// Raven's colours: "dark", "light" or "system".
+    pub appearance: String,
+    /// Colour of buttons and highlights: "violet", "teal", "blue", "rose", "amber".
+    pub accent: String,
+    /// Sites in "auto" (follow Raven), "dark" or "light".
+    pub site_scheme: String,
+    /// The AI in the side panel: "claude", "chatgpt" or "gemini".
+    pub ai_provider: String,
+    /// Offer to save passwords, and fill them in (WebView2's password manager).
+    pub save_passwords: bool,
+    /// Fill in addresses and forms.
+    pub autofill: bool,
+    /// Put tabs to sleep after this many minutes in the background (0: never).
+    pub sleep_minutes: u32,
+    /// Soft memory limit for all tabs in MB (0: no limit).
+    pub memory_limit_mb: u32,
+    /// Move tabs not opened for this many days to the archive (0: never).
+    pub archive_days: u32,
+    /// Game mode: put background tabs to sleep while a full screen game runs.
+    pub game_mode: bool,
+    /// Raven Shield blocks ads and trackers.
+    pub shield: bool,
+    /// Videos start only after you click (muted autoplay still allowed).
+    pub block_autoplay: bool,
+    /// Upgrade http:// addresses to https://.
+    pub https_upgrade: bool,
 }
 
 /// Search engines Raven offers: id, name, and the address the words are added to.
@@ -61,6 +87,19 @@ impl Default for Settings {
             restore_session: true,
             show_bookmarks_bar: true,
             search_engine: "google".into(),
+            appearance: "dark".into(),
+            accent: "violet".into(),
+            site_scheme: "auto".into(),
+            ai_provider: "claude".into(),
+            save_passwords: true,
+            autofill: true,
+            sleep_minutes: 20,
+            memory_limit_mb: 0,
+            archive_days: 0,
+            game_mode: true,
+            shield: true,
+            block_autoplay: false,
+            https_upgrade: true,
         }
     }
 }
@@ -71,6 +110,16 @@ impl Settings {
         if !SEARCH_ENGINES.iter().any(|(id, _, _)| *id == self.search_engine) {
             self.search_engine = "google".into();
         }
+        let pick = |value: &mut String, allowed: &[&str]| {
+            if !allowed.contains(&value.as_str()) {
+                *value = allowed[0].to_string();
+            }
+        };
+        pick(&mut self.appearance, &["dark", "light", "system"]);
+        pick(&mut self.accent, &["violet", "teal", "blue", "rose", "amber"]);
+        pick(&mut self.site_scheme, &["auto", "dark", "light"]);
+        pick(&mut self.ai_provider, &["claude", "chatgpt", "gemini"]);
+        self.sleep_minutes = self.sleep_minutes.min(24 * 60);
         self
     }
 }
@@ -110,6 +159,7 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<Setting
     store(&app, &settings)?;
     *app.state::<SettingsState>().0.lock().unwrap() = settings.clone();
     let _ = app.emit("settings", &settings);
+    crate::tabs::apply_settings(&app);
     crate::bookmarks::refresh_bar(&app);
     // New tab pages read the search engine when they load, so reload the open ones.
     crate::tabs::reload_new_tab_pages(&app);

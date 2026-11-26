@@ -19,6 +19,8 @@ pub struct SavedTab {
     pub url: String,
     pub title: String,
     pub pinned: bool,
+    /// When the tab was last opened (seconds since 1970), for the archive.
+    pub last_used: u64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]

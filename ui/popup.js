@@ -10,6 +10,16 @@ const { listen } = window.__TAURI__.event;
 const WINDOW = window.__TAURI__.window.getCurrentWindow().label;
 
 const root = document.getElementById("root");
+
+// Same colours as the toolbar.
+function applyLook() {
+  try {
+    document.documentElement.dataset.appearance = localStorage.getItem("raven-appearance") || "dark";
+    document.documentElement.dataset.accent = localStorage.getItem("raven-accent") || "violet";
+  } catch {}
+}
+applyLook();
+listen("settings", () => setTimeout(applyLook, 50));
 root.tabIndex = -1;
 let current = null; // { kind, data }
 
@@ -36,6 +46,15 @@ const ICONS = {
   star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>'),
   puzzle: svg('<path d="M9 4h4v2.5a1.5 1.5 0 0 0 3 0V4h3a1 1 0 0 1 1 1v4h-2.5a1.5 1.5 0 0 0 0 3H20v7a1 1 0 0 1-1 1h-4v-2.5a1.5 1.5 0 0 0-3 0V20H5a1 1 0 0 1-1-1v-6h2.5a1.5 1.5 0 0 0 0-3H4V5a1 1 0 0 1 1-1z"/>'),
   shield: svg('<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>'),
+  sparkle: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
+  book: svg('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/>'),
+  print: svg('<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>'),
+  command: svg('<path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/>'),
+  archive: svg('<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>'),
+  moon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+  chevronUp: svg('<path d="M6 15l6-6 6 6"/>', 14),
+  chevronDown: svg('<path d="M6 9l6 6 6-6"/>', 14),
+  tab: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h8V5"/>'),
   settings: svg('<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'),
   reload: svg('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
@@ -102,11 +121,19 @@ function drawMenu(data) {
     el("hr"),
     zoomRow(data.zoom ?? 1, data.page),
     el("hr"),
+    item("sparkle", "Yapay zekaya sor", "Ctrl+Space", action("toggle-ai")),
+    item("search", "Sayfada bul", "Ctrl+F", action("find"), { disabled: !data.page }),
+    item("book", "Okuma görünümü", null, action("reader-mode"), { disabled: !data.page }),
+    item("print", "Yazdır", "Ctrl+P", action("print"), { disabled: !data.page }),
+    item("command", "Komut paleti", "Ctrl+K", action("command-palette")),
+    el("hr"),
     item("history", "Geçmiş", "Ctrl+H", action("open-history")),
     item("download", "İndirmeler", "Ctrl+J", action("open-downloads")),
-    item("puzzle", "Uzantılar", null, action("open-extensions")),
     item("star", data.bar ? "Yer imleri çubuğunu gizle" : "Yer imleri çubuğunu göster", "Ctrl+Shift+B", action("toggle-bookmarks-bar")),
+    item("puzzle", "Uzantılar", null, action("open-extensions")),
+    item("archive", "Arşiv", null, action("open-archive")),
     el("hr"),
+    item("moon", "Diğer sekmeleri uyut", null, action("sleep-other-tabs")),
     item("settings", "Ayarlar", null, action("open-settings")),
   );
 }
@@ -216,58 +243,56 @@ async function drawSiteInfo(data) {
   root.replaceChildren(...children);
 }
 
-// The shield: the ad blocker (uBlock Origin Lite) on or off.
-const BIG_SHIELD = svg('<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>', 22);
+// Raven Shield: an orb with the number blocked on this page, a switch for
+// this site, and totals.
+function formatCount(n) {
+  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} M` : n >= 10_000 ? `${Math.round(n / 1000)} B` : n.toLocaleString("tr-TR");
+}
 
 function drawAdblock(data) {
-  const card = el("div", { class: "shield-card" });
-  const title = el("div", { class: "shield-title", text: "Raven Kalkanı" });
-  const sub = el("div", { class: "shield-sub" });
-  card.append(el("div", { class: "shield-badge", html: BIG_SHIELD }), el("div", { class: "shield-text" }, [title, sub]));
-  const children = [card];
+  const lit = data.on && data.siteOn;
+  const box = el("div", { class: "shield-box" + (lit ? "" : " off") });
+  const orb = el("div", { class: "shield-orb" }, [
+    el("div", {}, [
+      el("span", { class: "shield-count", text: lit ? formatCount(data.page || 0) : "—" }),
+      el("span", { class: "shield-unit", text: lit ? "engellendi" : "kapalı" }),
+    ]),
+  ]);
+  let state = "Bu sayfadaki reklamlar ve izleyiciler";
+  if (!data.on) state = "Kalkan Ayarlar'dan kapatılmış";
+  else if (!data.siteOn) state = "Bu sitede kapalı";
+  else if (data.error) state = data.error;
+  else if (!data.ready) state = "Engelleme listeleri hazırlanıyor…";
+  box.append(orb, el("div", { class: "shield-site", text: data.site || "Bu sayfa" }), el("div", { class: "shield-state", text: state }));
 
-  const show = (on) => {
-    card.classList.toggle("on", on);
-    sub.textContent = on ? "Reklamlar ve izleyiciler engelleniyor" : "Kapalı. Reklamlar görünür";
-  };
-
-  if (data.id) {
-    const toggle = el("input", { type: "checkbox", class: "switch big", role: "switch", "aria-label": "Raven Kalkanı açık" });
-    toggle.checked = data.enabled;
-    toggle.addEventListener("change", async () => {
-      show(toggle.checked);
-      try {
-        await invoke("set_extension_enabled", { id: data.id, enabled: toggle.checked });
-      } catch {
-        toggle.checked = !toggle.checked;
-        show(toggle.checked);
-      }
-    });
-    card.append(toggle);
-    show(data.enabled);
-    children.push(el("p", { class: "shield-note", text: "Açıp kapattıktan sonra sayfayı yenile" }));
-    if (data.hasOptions) {
-      children.push(el("hr"), item("settings", "Engelleme ayarları", null, () => run("open_extension_options", { id: data.id })));
-    }
-  } else if (data.busy) {
-    sub.textContent = "Kuruluyor… Birkaç saniye sürer";
-  } else {
-    card.classList.add("problem");
-    sub.textContent = data.error || "Henüz kurulu değil";
+  const toggle = el("input", { type: "checkbox", class: "switch", role: "switch", "aria-label": "Bu sitede kalkan" });
+  toggle.checked = Boolean(data.siteOn);
+  toggle.disabled = !data.site || !data.on;
+  toggle.addEventListener("change", async () => {
+    await run("set_shield_for_site", { on: toggle.checked });
+    const fresh = await run("get_shield");
+    if (fresh) drawAdblock(fresh);
+  });
+  const children = [
+    box,
+    el("label", { class: "shield-toggle" }, [el("span", { text: "Bu sitede kalkan" }), toggle]),
+    el("div", { class: "shield-stats" }, [
+      el("div", { class: "shield-stat" }, [el("b", { text: formatCount(data.total || 0) }), el("span", { text: "toplam engellenen" })]),
+      el("div", { class: "shield-stat" }, [el("b", { text: `~${formatCount(Math.round(((data.total || 0) * 40) / 1024))} MB` }), el("span", { text: "tasarruf" })]),
+    ]),
+  ];
+  if (data.error) {
     children.push(
       el("div", { class: "box-foot" }, [
         el("button", {
           class: "reset",
-          text: data.error ? "Tekrar dene" : "Kur",
+          text: "Listeleri tekrar indir",
           onclick: async (event) => {
             event.currentTarget.disabled = true;
-            event.currentTarget.textContent = "Kuruluyor…";
-            try {
-              await invoke("install_adblock");
-              close();
-            } catch (error) {
-              drawAdblock({ ...data, error: String(error) });
-            }
+            event.currentTarget.textContent = "İndiriliyor…";
+            await run("update_shield_lists");
+            const fresh = await run("get_shield");
+            if (fresh) drawAdblock(fresh);
           },
         }),
       ]),
@@ -355,7 +380,203 @@ function highlight(selected) {
   root.querySelectorAll(".suggestion").forEach((row, index) => row.classList.toggle("selected", index === selected));
 }
 
+// Find in page: query, "3 / 12", previous, next, close.
+function drawFind(data) {
+  const input = el("input", { class: "find-input", type: "text", placeholder: "Sayfada bul", "aria-label": "Sayfada bul", spellcheck: "false" });
+  const count = el("span", { class: "find-count", "aria-live": "polite" });
+  let timer = null;
+  const search = async (step) => {
+    try {
+      const found = await invoke("find_in_page", { query: input.value, step });
+      count.textContent = input.value ? (found.total ? `${found.current} / ${found.total}` : "Yok") : "";
+      root.classList.toggle("none", Boolean(input.value) && !found.total);
+    } catch {
+      count.textContent = "";
+    }
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => search(0), 120);
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      search(event.shiftKey ? -1 : 1);
+    }
+  });
+  root.className = "popup find";
+  root.replaceChildren(
+    el("div", { class: "find-bar" }, [
+      input,
+      count,
+      el("button", { class: "step", "aria-label": "Önceki (Shift + Enter)", title: "Önceki", html: ICONS.chevronUp, onclick: () => search(-1) }),
+      el("button", { class: "step", "aria-label": "Sonraki (Enter)", title: "Sonraki", html: ICONS.chevronDown, onclick: () => search(1) }),
+      el("button", { class: "step", "aria-label": "Kapat (Esc)", title: "Kapat", html: ICONS.close, onclick: close }),
+    ]),
+  );
+  setTimeout(() => input.focus(), 0);
+}
+
+// Command palette (Ctrl+K): tabs, bookmarks, history and Raven's commands.
+const COMMANDS = [
+  ["plus", "Yeni sekme", "new-tab", "Ctrl+T"],
+  ["window", "Yeni pencere", "new-window", "Ctrl+N"],
+  ["private", "Yeni gizli pencere", "new-private-window", "Ctrl+Shift+N"],
+  ["sparkle", "Yapay zeka panelini aç/kapat", "toggle-ai", "Ctrl+Space"],
+  ["sparkle", "Bu sayfayı özetle", "ai:summarize", ""],
+  ["sparkle", "Bu sayfayı açıkla", "ai:explain", ""],
+  ["sparkle", "Bu sayfayı Türkçeye çevir", "ai:translate", ""],
+  ["search", "Sayfada bul", "find", "Ctrl+F"],
+  ["book", "Okuma görünümü", "reader-mode", ""],
+  ["print", "Yazdır", "print", "Ctrl+P"],
+  ["star", "Yer imlerine ekle / çıkar", "toggle-bookmark", "Ctrl+D"],
+  ["history", "Geçmiş", "open-history", "Ctrl+H"],
+  ["download", "İndirmeler", "open-downloads", "Ctrl+J"],
+  ["puzzle", "Uzantılar", "open-extensions", ""],
+  ["archive", "Arşiv", "open-archive", ""],
+  ["moon", "Diğer sekmeleri uyut", "sleep-other-tabs", ""],
+  ["window", "Tam ekran", "fullscreen", "F11"],
+  ["settings", "Ayarlar", "open-settings", ""],
+  ["command", "Geliştirici araçları", "dev-tools", "F12"],
+];
+
+function fold(text) {
+  return (text || "").toLocaleLowerCase("tr").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
+}
+
+async function drawPalette(data) {
+  const tabsOnly = data.mode === "tabs";
+  const input = el("input", {
+    class: "palette-input",
+    type: "text",
+    placeholder: tabsOnly ? "Açık sekmelerde ara" : "Sekme, yer imi, geçmiş ya da komut ara",
+    "aria-label": "Ara",
+    spellcheck: "false",
+  });
+  const list = el("div", { class: "palette-list", role: "listbox" });
+  let rows = [];
+  let selected = 0;
+  let token = 0;
+  const tabState = (await run("get_tabs")) || { tabs: [] };
+
+  const pick = async (row) => {
+    if (!row) return;
+    close();
+    if (row.kind === "tab") run("switch_tab", { id: row.id });
+    else if (row.kind === "command" && row.action.startsWith("ai:")) run("ask_ai", { action: row.action.slice(3), question: null });
+    else if (row.kind === "command") run("run_action", { action: row.action });
+    else run("navigate", { input: row.url });
+  };
+
+  const render = () => {
+    list.replaceChildren(
+      ...rows.map((row, index) => {
+        const mark = el("span", { class: "mark" });
+        if (row.kind === "command") {
+          mark.classList.add("plain");
+          mark.innerHTML = ICONS[row.icon] || "";
+        } else if (row.url) {
+          RavenIcons.fill(mark, row.url, row.title);
+        } else {
+          mark.classList.add("plain");
+          mark.innerHTML = ICONS.tab;
+        }
+        const children = [mark, el("span", { class: "title", text: row.title })];
+        if (row.detail) children.push(el("span", { class: "url", text: row.detail }));
+        children.push(el("span", { class: "palette-kind", text: row.label }));
+        const node = el("div", { class: "item suggestion", role: "option" }, children);
+        node.classList.toggle("selected", index === selected);
+        node.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          pick(row);
+        });
+        node.addEventListener("mousemove", () => {
+          if (selected !== index) {
+            selected = index;
+            list.querySelectorAll(".suggestion").forEach((n, i) => n.classList.toggle("selected", i === selected));
+          }
+        });
+        return node;
+      }),
+    );
+    if (!rows.length) list.append(el("p", { class: "box-text muted", text: "Sonuç yok" }));
+  };
+
+  const update = async () => {
+    const query = fold(input.value.trim());
+    const my = ++token;
+    const tabs = tabState.tabs
+      .filter((tab) => !query || fold(tab.title).includes(query) || fold(tab.url).includes(query))
+      .map((tab) => ({ kind: "tab", id: tab.id, url: tab.url, title: tab.title, detail: shortUrl(tab.url), label: tab.id === tabState.active ? "Açık" : "Sekme" }));
+    const commands = tabsOnly
+      ? []
+      : COMMANDS.filter(([, name]) => !query || fold(name).includes(query)).map(([icon, title, act, keys]) => ({
+          kind: "command",
+          icon,
+          title,
+          action: act,
+          label: keys || "Komut",
+        }));
+    let pages = [];
+    if (!tabsOnly && query) {
+      const result = await run("get_suggestions", { query: input.value.trim() });
+      if (my !== token) return;
+      pages = (result?.items || []).map((item) => ({
+        kind: "page",
+        url: item.url,
+        title: item.title,
+        detail: shortUrl(item.url),
+        label: item.kind === "bookmark" ? "Yer imi" : "Geçmiş",
+      }));
+    }
+    rows = query ? [...tabs.slice(0, 6), ...commands.slice(0, 6), ...pages] : tabsOnly ? tabs : [...tabs.slice(0, 5), ...commands.slice(0, 8)];
+    rows = rows.slice(0, 40);
+    selected = 0;
+    render();
+  };
+
+  input.addEventListener("input", update);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!rows.length) return;
+      selected = (selected + (event.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length;
+      list.querySelectorAll(".suggestion").forEach((n, i) => n.classList.toggle("selected", i === selected));
+      list.querySelectorAll(".suggestion")[selected]?.scrollIntoView({ block: "nearest" });
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      pick(rows[selected]);
+    }
+  });
+
+  root.className = "popup palette";
+  root.replaceChildren(
+    el("div", { class: "palette-head", html: ICONS.search }, [input, el("kbd", { text: "Esc" })]),
+    list,
+  );
+  await update();
+  setTimeout(() => input.focus(), 0);
+}
+
+// Hover card of a tab: title, address, memory.
+function drawTabCard(data) {
+  const facts = [];
+  if (data.asleep) facts.push("Uyuyor · RAM kullanmıyor");
+  else if (data.memory != null) facts.push(`${data.memory} MB bellek`);
+  if (data.audible) facts.push("Ses çalıyor");
+  root.className = "popup card";
+  root.replaceChildren(
+    el("div", { class: "card-title", text: data.title || "Yeni sekme" }),
+    el("div", { class: "card-url", text: data.url ? shortUrl(data.url) : "Raven" }),
+    el("div", { class: "card-facts" + (data.asleep ? " asleep" : ""), text: facts.join(" · ") || " " }),
+  );
+}
+
 const DRAW = {
+  find: drawFind,
+  palette: drawPalette,
+  "tab-card": drawTabCard,
   menu: drawMenu,
   zoom: drawZoom,
   "tab-menu": drawTabMenu,
@@ -381,11 +602,12 @@ async function show(request) {
   visible = true;
   run("popup_ready");
   // Take the focus (so a click elsewhere closes it) without highlighting a button.
-  if (request.kind !== "suggestions") root.focus();
+  if (request.kind !== "suggestions" && request.kind !== "tab-card" && request.kind !== "find" && request.kind !== "palette") root.focus();
 }
 
 listen("popup-closed", ({ payload }) => {
   if (payload !== WINDOW) return;
+  if (current?.kind === "find") run("stop_finding");
   visible = false;
   current = null;
   root.replaceChildren();
@@ -421,7 +643,7 @@ listen("bookmarks-bar", ({ payload }) => {
 // Clicking anywhere else, or Escape, closes it. Suggestions never get focus;
 // the toolbar closes them.
 window.addEventListener("blur", () => {
-  if (visible && current && current.kind !== "suggestions") close();
+  if (visible && current && !["suggestions", "tab-card", "find"].includes(current.kind)) close();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") close();

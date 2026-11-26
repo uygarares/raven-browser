@@ -37,6 +37,29 @@ fn changed(app: &AppHandle) {
     refresh_bar(app);
 }
 
+/// Adds bookmarks that are not there yet (same address). Returns how many were added.
+pub fn add_many(app: &AppHandle, items: Vec<(String, String)>) -> usize {
+    let added = {
+        let state = app.state::<Bookmarks>();
+        let mut list = state.0.lock().unwrap();
+        let mut next = list.iter().map(|b| b.id).max().unwrap_or(0);
+        let mut added = 0;
+        for (title, url) in items {
+            if list.iter().any(|b| b.url == url) {
+                continue;
+            }
+            next += 1;
+            list.push(Bookmark { id: next, title, url });
+            added += 1;
+        }
+        added
+    };
+    if added > 0 {
+        changed(app);
+    }
+    added
+}
+
 /// The bar shows when it is switched on and there is at least one bookmark.
 pub fn refresh_bar(app: &AppHandle) {
     let enabled = app.state::<SettingsState>().0.lock().unwrap().show_bookmarks_bar;

@@ -43,6 +43,42 @@ pub struct TabInfo {
     /// The page is playing sound.
     audible: bool,
     muted: bool,
+    /// Memory of the tab's page in MB, from the last measurement (hover card).
+    memory: Option<u32>,
+    /// When the tab was last shown (for sleeping tabs).
+    #[serde(skip)]
+    last_seen: std::time::Instant,
+    /// When the tab was last opened, in seconds since 1970 (for the archive).
+    #[serde(skip)]
+    last_used: u64,
+}
+
+/// Decodes %XX escapes (UTF-8) in text from a raven-action: address.
+pub fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
+            if let Some(value) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(value);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Seconds since 1970.
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// The tabs of one window, left to right.
@@ -199,6 +235,7 @@ fn save_session(app: &AppHandle) {
                         url: tab.url.clone(),
                         title: tab.title.clone(),
                         pinned: tab.pinned,
+                        last_used: tab.last_used,
                     })
                     .collect();
                 let active = tabs
@@ -307,6 +344,9 @@ fn add_tab(app: &AppHandle, window: &str, url: &str, title: &str, place: Place, 
                 pinned,
                 audible: false,
                 muted: false,
+                memory: None,
+                last_seen: std::time::Instant::now(),
+                last_used: now_secs(),
             },
         );
         id
@@ -314,8 +354,107 @@ fn add_tab(app: &AppHandle, window: &str, url: &str, title: &str, place: Place, 
 }
 
 /// Adds a restored tab that loads only when it is opened.
-pub fn add_sleeping_tab(app: &AppHandle, window: &str, url: &str, title: &str, pinned: bool) -> u32 {
-    add_tab(app, window, url, title, Place::End, pinned)
+pub fn add_sleeping_tab(app: &AppHandle, window: &str, url: &str, title: &str, pinned: bool, last_used: u64) -> u32 {
+    let id = add_tab(app, window, url, title, Place::End, pinned);
+    if last_used > 0 {
+        with_tabs(app, |list| {
+            if let Some(info) = list.info.get_mut(&id) {
+                info.last_used = last_used;
+            }
+        });
+    }
+    id
+}
+
+/// A tab as the performance watcher sees it.
+pub struct TabUse {
+    pub id: u32,
+    pub window: String,
+    pub url: String,
+    pub title: String,
+    pub active: bool,
+    pub asleep: bool,
+    pub pinned: bool,
+    pub audible: bool,
+    pub private: bool,
+    pub idle: std::time::Duration,
+    pub last_used: u64,
+}
+
+pub fn all_tabs(app: &AppHandle) -> Vec<TabUse> {
+    with_tabs(app, |list| {
+        list.info
+            .values()
+            .map(|tab| TabUse {
+                id: tab.id,
+                window: tab.window.clone(),
+                url: tab.url.clone(),
+                title: tab.title.clone(),
+                active: list.windows.get(&tab.window).and_then(|w| w.active) == Some(tab.id),
+                asleep: tab.asleep,
+                pinned: tab.pinned,
+                audible: tab.audible,
+                private: tab.private,
+                idle: tab.last_seen.elapsed(),
+                last_used: tab.last_used,
+            })
+            .collect()
+    })
+}
+
+/// Puts a tab to sleep: its page is closed to free memory and loads again
+/// when the tab is opened. Returns false for tabs that must stay awake.
+pub fn sleep_tab(app: &AppHandle, id: u32) -> bool {
+    let window = with_tabs(app, |list| {
+        let info = list.info.get(&id)?;
+        let active = list.windows.get(&info.window).and_then(|w| w.active) == Some(id);
+        if active || info.asleep || info.audible {
+            return None;
+        }
+        let window = info.window.clone();
+        let info = list.info.get_mut(&id)?;
+        info.asleep = true;
+        info.loading = false;
+        info.memory = None;
+        Some(window)
+    });
+    let Some(window) = window else { return false };
+    if let Some(webview) = app.get_webview(&label(id)) {
+        let _ = webview.close();
+    }
+    publish(app, &window);
+    true
+}
+
+/// Puts every tab of a window to sleep except the one you are looking at.
+pub fn sleep_others(app: &AppHandle, window: &str) {
+    for id in tab_ids(app, window) {
+        sleep_tab(app, id);
+    }
+}
+
+/// Saves the measured memory of tabs (MB) for their hover cards.
+pub fn set_memory(app: &AppHandle, pages: &[(String, u64)]) {
+    let changed: Vec<String> = with_tabs(app, |list| {
+        let mut windows = Vec::new();
+        for info in list.info.values_mut() {
+            let mb = if info.asleep {
+                None
+            } else {
+                pages.iter().find(|(url, _)| *url == info.url).map(|(_, bytes)| (*bytes / 1_048_576) as u32)
+            };
+            if info.memory != mb {
+                info.memory = mb;
+                if !windows.contains(&info.window) {
+                    windows.push(info.window.clone());
+                }
+            }
+        }
+        windows
+    });
+    for window in changed {
+        publish(app, &window);
+    }
 }
 
 /// Creates the webview of a tab and loads its page.
@@ -353,6 +492,17 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
         .initialization_script(extensions::STORE_SCRIPT)
         .on_navigation(move |url| {
             if let Some(action) = url.as_str().strip_prefix(ACTION_PREFIX) {
+                // "Sor" on the new tab page: a question for the AI panel.
+                if let Some(text) = action.strip_prefix("ask-ai:") {
+                    let app = on_link.clone();
+                    let question = percent_decode(text);
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(window) = window_of_tab(&app, id) {
+                            crate::ai::ask_direct(&app, &window, &question);
+                        }
+                    });
+                    return false;
+                }
                 // "Raven'a ekle" on a Chrome Web Store page.
                 if let Some(store_id) = action.strip_prefix("install-extension:") {
                     let app = on_link.clone();
@@ -397,6 +547,7 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
             let mut url = payload.url().to_string();
             let mut level = 1.0;
             if loading {
+                crate::shield::page_started(&on_load, id);
                 let _ = webview.set_background_color(Some(background_for(&url)));
                 // Each website keeps its own zoom.
                 level = zoom::level_for(&on_load, &url);
@@ -408,7 +559,12 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                 if !loading && private {
                     let _ = webview.eval("document.body.classList.add('private')");
                 }
-            } else if !loading && !private {
+            } else if !loading {
+                if let Some(script) = crate::shield::cosmetic_script(&on_load, &url) {
+                    let _ = webview.eval(script);
+                }
+            }
+            if !is_new_tab_url(&url) && !loading && !private {
                 // The title usually arrives before the page finishes loading.
                 let title = with_tabs(&on_load, |list| {
                     list.info.get(&id).map(|tab| tab.title.clone()).unwrap_or_default()
@@ -469,6 +625,13 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     )?;
     crate::shortcuts::listen_in_tab(app, &webview, id);
     media::watch(app, &webview, id);
+    {
+        let settings = app.state::<crate::settings::SettingsState>().0.lock().unwrap().clone();
+        crate::native::configure(&webview, settings.save_passwords, settings.autofill);
+        crate::native::set_color_scheme(&webview, &settings.site_scheme);
+    }
+    crate::native::watch_fullscreen(app, &webview, page_fullscreen);
+    crate::shield::attach(app, &webview, id);
     windows::tab_created(app, &window_label);
     if windows::is_full_window(app, &window_label) {
         windows::layout(app, &window_label);
@@ -518,7 +681,17 @@ pub fn show_only(app: &AppHandle, id: u32) {
             tabs.last_opened = None;
         }
         let changed = tabs.active != Some(id);
-        tabs.active = Some(id);
+        let previous = tabs.active.replace(id);
+        // The tab you leave starts its time in the background now.
+        for seen in [previous, Some(id)].into_iter().flatten() {
+            if let Some(info) = list.info.get_mut(&seen) {
+                info.last_seen = std::time::Instant::now();
+            }
+        }
+        if let Some(info) = list.info.get_mut(&id) {
+            info.last_seen = std::time::Instant::now();
+            info.last_used = now_secs();
+        }
         Some((window, changed))
     }) else {
         return;
@@ -581,6 +754,10 @@ pub fn reload_new_tab_pages(app: &AppHandle) {
     }
 }
 
+pub fn active_tab_id(app: &AppHandle, window: &str) -> Option<u32> {
+    active_id(app, window)
+}
+
 fn active_id(app: &AppHandle, window: &str) -> Option<u32> {
     with_tabs(app, |list| list.windows.get(window).and_then(|w| w.active))
 }
@@ -598,6 +775,29 @@ pub fn active_page(app: &AppHandle, window: &str) -> Option<(String, String)> {
         let info = list.info.get(&id)?;
         Some((info.url.clone(), info.title.clone()))
     })
+}
+
+/// The webview of a window's active tab, if it is awake.
+pub fn active_webview(app: &AppHandle, window: &str) -> Option<Webview> {
+    let id = active_id(app, window)?;
+    app.get_webview(&label(id))
+}
+
+/// A page went in or out of full screen (a video's full screen button).
+fn page_fullscreen(app: &AppHandle, webview: &Webview, on: bool) {
+    let window = crate::windows::window_of(webview);
+    crate::windows::set_fullscreen(app, &window, on);
+}
+
+/// Applies changed settings to the open tabs (passwords, forms, site colours).
+pub fn apply_settings(app: &AppHandle) {
+    let settings = app.state::<crate::settings::SettingsState>().0.lock().unwrap().clone();
+    for (label, webview) in app.webviews() {
+        if label.starts_with("tab-") {
+            crate::native::configure(&webview, settings.save_passwords, settings.autofill);
+            crate::native::set_color_scheme(&webview, &settings.site_scheme);
+        }
+    }
 }
 
 /// Opens a tab in a window and shows it.
@@ -977,6 +1177,12 @@ mod tests {
 
     fn to_url(input: &str) -> Result<tauri::Url, String> {
         super::to_url(input, GOOGLE)
+    }
+
+    #[test]
+    fn decodes_actions() {
+        assert_eq!(super::percent_decode("Merhaba%20d%C3%BCnya%3F"), "Merhaba dünya?");
+        assert_eq!(super::percent_decode("50%"), "50%");
     }
 
     #[test]

@@ -33,6 +33,25 @@ pub enum Action {
     ZoomReset,
     ToggleBookmark,
     ToggleBookmarksBar,
+    /// Ctrl+F: find in page.
+    Find,
+    /// Ctrl+Space: open or close the AI panel.
+    ToggleAi,
+    /// F11.
+    Fullscreen,
+    /// F12 or Ctrl+Shift+I.
+    DevTools,
+    /// Ctrl+K: search tabs, history, bookmarks and commands.
+    CommandPalette,
+    /// Ctrl+Shift+A: search open tabs.
+    TabSearch,
+    /// Ctrl+P (from Raven's toolbar; inside pages WebView2 prints by itself).
+    Print,
+    /// The reading view of the page.
+    ReaderMode,
+    OpenArchive,
+    /// Put the other tabs to sleep now.
+    SleepOtherTabs,
 }
 
 /// Matches a key press to an action, like Chrome: Ctrl+T, Ctrl+N, Ctrl+Shift+N,
@@ -42,9 +61,18 @@ pub enum Action {
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
     if !ctrl {
-        return None;
+        return match key {
+            0x7A => Some(Action::Fullscreen), // F11
+            0x7B => Some(Action::DevTools),   // F12
+            _ => None,
+        };
     }
     let action = match (key, shift) {
+        (0x46, false) => Action::Find,           // F
+        (0x20, false) => Action::ToggleAi,       // Space
+        (0x4B, false) => Action::CommandPalette, // K
+        (0x41, true) => Action::TabSearch,       // Shift+A
+        (0x49, true) => Action::DevTools,        // Shift+I
         (0x54, false) => Action::NewTab,      // T
         (0x54, true) => Action::ReopenTab,    // Shift+T
         (0x4E, false) => Action::NewWindow,   // N
@@ -125,6 +153,52 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
             Action::ZoomReset => tabs::zoom_active(&app, window, 0),
             Action::ToggleBookmark => bookmarks::toggle_active(&app, window).map(|_| ()),
             Action::ToggleBookmarksBar => bookmarks::toggle_bar(&app),
+            Action::Find => {
+                tell_toolbar(&app, window, "open-find");
+                Ok(())
+            }
+            Action::ToggleAi => {
+                let open = !windows::ai_panel_open(&app, window);
+                windows::set_ai_panel(&app, window, open);
+                Ok(())
+            }
+            Action::Fullscreen => {
+                let on = !windows::is_fullscreen(&app, window);
+                if !on {
+                    // A video in full screen leaves it too.
+                    if let Some(tab) = tabs::active_webview(&app, window) {
+                        let _ = tab.eval("document.fullscreenElement && document.exitFullscreen()");
+                    }
+                }
+                windows::set_fullscreen(&app, window, on);
+                Ok(())
+            }
+            Action::DevTools => {
+                if let Some(tab) = tabs::active_webview(&app, window) {
+                    tab.open_devtools();
+                }
+                Ok(())
+            }
+            Action::CommandPalette => {
+                tell_toolbar(&app, window, "open-palette");
+                Ok(())
+            }
+            Action::TabSearch => {
+                tell_toolbar(&app, window, "open-tab-search");
+                Ok(())
+            }
+            Action::Print => tabs::active_webview(&app, window)
+                .ok_or_else(|| "No page".to_string())
+                .and_then(|tab| tab.print().map_err(|e| e.to_string())),
+            Action::ReaderMode => crate::reader::toggle(&app, window),
+            Action::OpenArchive => {
+                tell_toolbar(&app, window, "open-archive");
+                Ok(())
+            }
+            Action::SleepOtherTabs => {
+                tabs::sleep_others(&app, window);
+                Ok(())
+            }
         };
         if let Err(error) = result {
             eprintln!("Action {action:?} failed: {error}");
@@ -210,6 +284,13 @@ mod tests {
         assert_eq!(from_key(true, false, 0x30), Some(Action::ZoomReset));
         assert_eq!(from_key(true, false, 0x44), Some(Action::ToggleBookmark));
         assert_eq!(from_key(true, true, 0x42), Some(Action::ToggleBookmarksBar));
+        assert_eq!(from_key(true, false, 0x46), Some(Action::Find));
+        assert_eq!(from_key(true, false, 0x20), Some(Action::ToggleAi));
+        assert_eq!(from_key(false, false, 0x7A), Some(Action::Fullscreen));
+        assert_eq!(from_key(false, false, 0x7B), Some(Action::DevTools));
+        assert_eq!(from_key(true, false, 0x4B), Some(Action::CommandPalette));
+        assert_eq!(from_key(true, true, 0x41), Some(Action::TabSearch));
+        assert_eq!(from_key(false, false, 0x54), None);
     }
 
     #[test]

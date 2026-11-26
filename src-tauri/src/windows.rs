@@ -38,6 +38,43 @@ struct WindowState {
     private: bool,
     /// The toolbar fills the whole window (history, downloads, settings).
     full_window: bool,
+    /// The AI panel is open at the right.
+    ai_panel: bool,
+    /// F11 or a page in full screen (a video): no toolbar, no margins.
+    fullscreen: bool,
+}
+
+/// Space around the page card, and its corner radius (logical pixels).
+pub const PAGE_MARGIN: f64 = 8.0;
+pub const PAGE_RADIUS: f64 = 12.0;
+/// Width of the AI panel.
+pub const AI_PANEL_WIDTH: f64 = 420.0;
+
+/// Where the page and the AI panel go in a window.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// The page card and the AI panel for a window of `size`, with a toolbar of
+/// height `top`.
+pub fn page_layout(size: (f64, f64), top: f64, ai_panel: bool, fullscreen: bool) -> (Rect, Option<Rect>) {
+    let (width, height) = size;
+    if fullscreen {
+        return (Rect { x: 0.0, y: 0.0, width, height }, None);
+    }
+    let m = PAGE_MARGIN;
+    let inner_height = (height - top - m).max(0.0);
+    if ai_panel && width > AI_PANEL_WIDTH + 320.0 {
+        let page_width = (width - 3.0 * m - AI_PANEL_WIDTH).max(0.0);
+        let panel = Rect { x: width - m - AI_PANEL_WIDTH, y: top, width: AI_PANEL_WIDTH, height: inner_height };
+        (Rect { x: m, y: top, width: page_width, height: inner_height }, Some(panel))
+    } else {
+        (Rect { x: m, y: top, width: (width - 2.0 * m).max(0.0), height: inner_height }, None)
+    }
 }
 
 #[derive(Default)]
@@ -132,7 +169,7 @@ fn bring_to_front(_webview: &Webview) {}
 /// Rounds a popup's corners (radius in logical pixels), so it looks like a card
 /// floating over the page. Windows clips the popup's child window to the shape.
 #[cfg(windows)]
-fn round_corners(webview: &Webview, size: (f64, f64), radius: f64) {
+pub fn round_corners(webview: &Webview, size: (f64, f64), radius: f64) {
     use ::windows::Win32::Foundation::HWND;
     use ::windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
     let scale = webview.window().scale_factor().unwrap_or(1.0);
@@ -141,14 +178,18 @@ fn round_corners(webview: &Webview, size: (f64, f64), radius: f64) {
     let _ = webview.with_webview(move |platform| unsafe {
         let mut hwnd = HWND::default();
         if platform.controller().ParentWindow(&mut hwnd).is_ok() && !hwnd.is_invalid() {
-            let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
-            SetWindowRgn(hwnd, Some(region), true);
+            if diameter <= 0 {
+                SetWindowRgn(hwnd, None, true);
+            } else {
+                let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
+                SetWindowRgn(hwnd, Some(region), true);
+            }
         }
     });
 }
 
 #[cfg(not(windows))]
-fn round_corners(_webview: &Webview, _size: (f64, f64), _radius: f64) {}
+pub fn round_corners(_webview: &Webview, _size: (f64, f64), _radius: f64) {}
 
 /// Creates the window's popup webview, hidden, or returns the one there is.
 fn make_popup(app: &AppHandle, window: &str, focus: bool) -> Result<Webview, String> {
@@ -181,20 +222,57 @@ pub fn layout(app: &AppHandle, window: &str) {
     let scale = handle.scale_factor().unwrap_or(1.0);
     let Ok(size) = handle.inner_size() else { return };
     let size = size.to_logical::<f64>(scale);
-    let full = is_full_window(app, window);
-    let top = toolbar_height();
+    let state = with_windows(app, |states| states.get(window).cloned()).unwrap_or_default();
+    let full = state.full_window;
+    // The toolbar webview fills the window behind the page: its background is
+    // the colour around the page card.
     if let Some(toolbar) = app.get_webview(&ui_label(window)) {
-        let height = if full { size.height } else { top };
-        let _ = toolbar.set_size(LogicalSize::new(size.width, height));
+        let _ = toolbar.set_size(LogicalSize::new(size.width, size.height));
     }
+    let (page, panel) = page_layout((size.width, size.height), toolbar_height(), state.ai_panel, state.fullscreen);
+    let radius = if state.fullscreen { 0.0 } else { PAGE_RADIUS };
     for webview in tabs::webviews_of(app, window) {
-        let _ = webview.set_position(LogicalPosition::new(0.0, top));
+        let _ = webview.set_position(LogicalPosition::new(page.x, page.y));
         // Tabs sit on top of the toolbar webview, so while the toolbar fills the
-        // window they are also shrunk to nothing, not only hidden.
-        let (width, height) =
-            if full { (0.0, 0.0) } else { (size.width, (size.height - top).max(0.0)) };
+        // window (history, settings) they are shrunk to nothing, not only hidden.
+        let (width, height) = if full { (0.0, 0.0) } else { (page.width, page.height) };
         let _ = webview.set_size(LogicalSize::new(width, height));
+        round_corners(&webview, (width, height), radius);
     }
+    crate::ai::place(app, window, if full { None } else { panel });
+}
+
+pub fn is_fullscreen(app: &AppHandle, window: &str) -> bool {
+    with_windows(app, |states| states.get(window).is_some_and(|s| s.fullscreen))
+}
+
+/// F11 or a page asking for full screen (a video).
+pub fn set_fullscreen(app: &AppHandle, window: &str, on: bool) {
+    with_windows(app, |states| {
+        if let Some(state) = states.get_mut(window) {
+            state.fullscreen = on;
+        }
+    });
+    if let Some(handle) = app.get_window(window) {
+        let _ = handle.set_fullscreen(on);
+    }
+    close_popup(app, window);
+    let _ = app.emit("fullscreen", serde_json::json!({ "window": window, "on": on }));
+    layout(app, window);
+}
+
+pub fn ai_panel_open(app: &AppHandle, window: &str) -> bool {
+    with_windows(app, |states| states.get(window).is_some_and(|s| s.ai_panel))
+}
+
+pub fn set_ai_panel(app: &AppHandle, window: &str, open: bool) {
+    with_windows(app, |states| {
+        if let Some(state) = states.get_mut(window) {
+            state.ai_panel = open;
+        }
+    });
+    let _ = app.emit("ai-panel", serde_json::json!({ "window": window, "open": open }));
+    layout(app, window);
 }
 
 pub fn layout_all(app: &AppHandle) {
@@ -213,7 +291,7 @@ pub fn open_window(
     let number = NEXT_WINDOW.fetch_add(1, Ordering::SeqCst);
     let label = format!("win-{number}");
     with_windows(app, |states| {
-        states.insert(label.clone(), WindowState { private, full_window: false })
+        states.insert(label.clone(), WindowState { private, ..Default::default() })
     });
 
     let width = 1280.0;
@@ -236,14 +314,14 @@ pub fn open_window(
     let toolbar = extensions::allow(
         WebviewBuilder::new(ui_label(&label), WebviewUrl::App("index.html".into())).background_color(BACKGROUND),
     );
-    window.add_child(toolbar, LogicalPosition::new(0.0, 0.0), LogicalSize::new(width, toolbar_height()))?;
+    window.add_child(toolbar, LogicalPosition::new(0.0, 0.0), LogicalSize::new(width, height))?;
 
     match restore.filter(|saved| !saved.tabs.is_empty()) {
         Some(saved) => {
             let ids: Vec<u32> = saved
                 .tabs
                 .iter()
-                .map(|tab| tabs::add_sleeping_tab(app, &label, &tab.url, &tab.title, tab.pinned))
+                .map(|tab| tabs::add_sleeping_tab(app, &label, &tab.url, &tab.title, tab.pinned, tab.last_used))
                 .collect();
             if let Some(active) = ids.get(saved.active).or(ids.first()).copied() {
                 tabs::show_only(app, active);
@@ -359,7 +437,7 @@ fn show_popup(app: &AppHandle, window: &str) {
         return;
     };
     let focus = request.focus;
-    round_corners(&popup, (request.width, request.height), 12.0);
+    round_corners(&popup, (request.width, request.height), 14.0);
     bring_to_front(&popup);
     let _ = popup.show();
     if focus {

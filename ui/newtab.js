@@ -7,10 +7,26 @@ const date = document.getElementById("date");
 const timeFormat = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" });
 
+// Same colours as Raven (the toolbar copies the setting here).
+try {
+  document.documentElement.dataset.appearance = localStorage.getItem("raven-appearance") || "dark";
+  document.documentElement.dataset.accent = localStorage.getItem("raven-accent") || "violet";
+} catch {}
+
+const greeting = document.getElementById("greeting");
+function greet(hour) {
+  if (hour < 5) return "İyi geceler";
+  if (hour < 12) return "Günaydın";
+  if (hour < 18) return "İyi günler";
+  if (hour < 22) return "İyi akşamlar";
+  return "İyi geceler";
+}
+
 function tick() {
   const now = new Date();
   clock.textContent = timeFormat.format(now);
   date.textContent = dateFormat.format(now);
+  greeting.textContent = greet(now.getHours());
 }
 tick();
 setInterval(tick, 1000);
@@ -32,6 +48,12 @@ function toUrl(input) {
   if (text.includes(".") && !text.includes(" ")) return `https://${text}`;
   return `${searchUrl()}${encodeURIComponent(text).replace(/%20/g, "+")}`;
 }
+
+// "Sor": the question goes to the AI panel (Raven catches this address).
+document.getElementById("ask").addEventListener("click", () => {
+  const text = document.getElementById("query").value.trim();
+  location.href = "raven-action:ask-ai:" + encodeURIComponent(text);
+});
 
 document.getElementById("search").addEventListener("submit", (event) => {
   event.preventDefault();

@@ -6,7 +6,8 @@
   <title>Raven</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="sheen">
+  <div class="page-slot" aria-hidden="true"></div>
   <!-- Row 1: logo, tabs and window buttons. Empty space here moves the window. -->
   <div class="tab-row" data-tauri-drag-region>
     <img class="logo" src="logo.png" alt="Raven" data-tauri-drag-region>
@@ -55,6 +56,10 @@
     </form>
     <button id="downloads" class="icon-button" hidden aria-label="İndirmeler (Ctrl + J)" title="İndirmeler (Ctrl + J)">
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
+    </button>
+    <button id="ai-button" class="ai-button" aria-label="Yapay zekaya sor (Ctrl + Boşluk)" title="Yapay zekaya sor (Ctrl + Boşluk)" aria-pressed="false">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+      <span>Sor</span>
     </button>
     <button id="adblock-button" class="icon-button shield" aria-label="Reklam engelleyici" title="Reklam engelleyici" aria-haspopup="dialog">
       <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path class="shield-check" d="M9 12l2 2 4-4"/></svg>
@@ -106,73 +111,191 @@
     </div>
   </section>
 
-  <!-- Settings panel. -->
-  <section id="settings-panel" class="panel" aria-labelledby="settings-title" hidden>
+  <!-- Settings panel. Inputs with data-setting save that setting when changed. -->
+  <section id="settings-panel" class="panel settings" aria-labelledby="settings-title" hidden>
+    <nav class="settings-nav" aria-label="Ayar bölümleri">
+      <h1 id="settings-title">Ayarlar</h1>
+      <a href="#set-look">Görünüm</a>
+      <a href="#set-ai">Yapay zeka</a>
+      <a href="#set-search">Arama ve başlangıç</a>
+      <a href="#set-shield">Gizlilik ve güvenlik</a>
+      <a href="#set-speed">Performans</a>
+      <a href="#set-import">İçe aktar</a>
+      <a href="#set-about">Hakkında</a>
+    </nav>
     <div class="panel-inner">
       <div class="panel-head">
-        <h1 id="settings-title">Ayarlar</h1>
+        <span></span>
         <button class="icon-button panel-close" aria-label="Kapat (Esc)" title="Kapat (Esc)">
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
 
-      <section class="settings-group" aria-labelledby="set-search">
-        <h2 id="set-search">Arama</h2>
+      <section id="set-look" class="settings-group">
+        <h2>Görünüm</h2>
         <div class="setting">
-          <label for="search-engine">
-            <span class="setting-name">Arama motoru</span>
-            <span class="setting-note">Adres çubuğunda ve yeni sekmede kullanılır</span>
-          </label>
-          <select id="search-engine"></select>
+          <span><span class="setting-name">Tema</span></span>
+          <div class="segmented" role="radiogroup" aria-label="Tema" data-setting="appearance">
+            <button role="radio" data-value="dark">Koyu</button>
+            <button role="radio" data-value="light">Açık</button>
+            <button role="radio" data-value="system">Sistem</button>
+          </div>
         </div>
-      </section>
-
-      <section class="settings-group" aria-labelledby="set-start">
-        <h2 id="set-start">Başlangıç ve görünüm</h2>
-        <label class="setting">
-          <span>
-            <span class="setting-name">Açılışta son sekmeleri geri aç</span>
-            <span class="setting-note">Sadece açık sekme yüklenir, diğerleri tıklayınca açılır</span>
-          </span>
-          <input id="restore-session" type="checkbox" role="switch" class="switch">
-        </label>
-        <label class="setting">
-          <span>
-            <span class="setting-name">Yer imleri çubuğunu göster</span>
-            <span class="setting-note">Ctrl + Shift + B</span>
-          </span>
-          <input id="show-bookmarks-bar" type="checkbox" role="switch" class="switch">
-        </label>
-      </section>
-
-      <section class="settings-group" aria-labelledby="set-privacy">
-        <h2 id="set-privacy">Gizlilik</h2>
         <div class="setting">
-          <span>
-            <span class="setting-name">Geçmişi temizle</span>
-            <span class="setting-note">Gezdiğin sitelerin listesi silinir</span>
-          </span>
+          <span><span class="setting-name">Vurgu rengi</span><span class="setting-note">Düğmeler ve seçili şeyler</span></span>
+          <div class="swatches" role="radiogroup" aria-label="Vurgu rengi" data-setting="accent">
+            <button role="radio" data-value="violet" style="--swatch:#a184f7" aria-label="Mor"></button>
+            <button role="radio" data-value="blue" style="--swatch:#6d95ff" aria-label="Mavi"></button>
+            <button role="radio" data-value="teal" style="--swatch:#2fd0b8" aria-label="Turkuaz"></button>
+            <button role="radio" data-value="rose" style="--swatch:#ff7aa8" aria-label="Pembe"></button>
+            <button role="radio" data-value="amber" style="--swatch:#ffbe55" aria-label="Kehribar"></button>
+          </div>
+        </div>
+        <label class="setting">
+          <span><span class="setting-name">Siteler</span><span class="setting-note">Destekleyen siteler koyu ya da açık açılır</span></span>
+          <select data-setting="siteScheme">
+            <option value="auto">Raven ile aynı</option>
+            <option value="dark">Koyu</option>
+            <option value="light">Açık</option>
+          </select>
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Yer imleri çubuğu</span><span class="setting-note">Ctrl + Shift + B</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="showBookmarksBar">
+        </label>
+      </section>
+
+      <section id="set-ai" class="settings-group">
+        <h2>Yapay zeka</h2>
+        <label class="setting">
+          <span><span class="setting-name">Sağ paneldeki yapay zeka</span><span class="setting-note">Kendi hesabınla giriş yaparsın, ücretsiz. Ctrl + Boşluk ile aç</span></span>
+          <select data-setting="aiProvider">
+            <option value="claude">Claude</option>
+            <option value="chatgpt">ChatGPT</option>
+            <option value="gemini">Gemini</option>
+          </select>
+        </label>
+      </section>
+
+      <section id="set-search" class="settings-group">
+        <h2>Arama ve başlangıç</h2>
+        <label class="setting">
+          <span><span class="setting-name">Arama motoru</span><span class="setting-note">Adres çubuğunda ve yeni sekmede</span></span>
+          <select id="search-engine" data-setting="searchEngine"></select>
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Açılışta son sekmeleri geri aç</span><span class="setting-note">Sadece açık sekme yüklenir, diğerleri tıklayınca</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="restoreSession">
+        </label>
+      </section>
+
+      <section id="set-shield" class="settings-group">
+        <h2>Gizlilik ve güvenlik</h2>
+        <label class="setting">
+          <span><span class="setting-name">Raven Kalkanı</span><span class="setting-note">Reklamları ve izleyicileri engeller, sayfalar daha hızlı açılır</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="shield">
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Her zaman güvenli bağlantı</span><span class="setting-note">http:// adresleri https:// ile açılır</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="httpsUpgrade">
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Videolar kendiliğinden başlamasın</span><span class="setting-note">Sesli videolar sen basınca oynar</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="blockAutoplay">
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Şifreleri kaydetmeyi öner</span><span class="setting-note">Şifreler Windows'un şifrelemesiyle bu bilgisayarda saklanır</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="savePasswords">
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Formları otomatik doldur</span><span class="setting-note">Ad, adres, telefon</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="autofill">
+        </label>
+        <div class="setting">
+          <span><span class="setting-name">Geçmişi temizle</span><span class="setting-note">Gezdiğin sitelerin listesi silinir</span></span>
           <button id="settings-clear-history" class="secondary">Temizle</button>
         </div>
         <div class="setting">
-          <span>
-            <span class="setting-name">Çerezleri ve site verilerini temizle</span>
-            <span class="setting-note">Sitelerdeki oturumların kapanır</span>
-          </span>
+          <span><span class="setting-name">Çerezleri ve site verilerini temizle</span><span class="setting-note">Sitelerdeki oturumların kapanır</span></span>
           <button id="settings-clear-data" class="secondary">Temizle</button>
         </div>
       </section>
 
-      <section class="settings-group" aria-labelledby="set-about">
-        <h2 id="set-about">Hakkında</h2>
+      <section id="set-speed" class="settings-group">
+        <h2>Performans</h2>
+        <label class="setting">
+          <span><span class="setting-name">Sekmeleri uyut</span><span class="setting-note">Bakmadığın sekmeler RAM kullanmaz, tıklayınca kaldığı yerden açılır</span></span>
+          <select data-setting="sleepMinutes" data-number>
+            <option value="0">Kapalı</option>
+            <option value="5">5 dakika sonra</option>
+            <option value="10">10 dakika sonra</option>
+            <option value="20">20 dakika sonra</option>
+            <option value="60">1 saat sonra</option>
+            <option value="240">4 saat sonra</option>
+          </select>
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">RAM sınırı</span><span class="setting-note">Aşılınca en eski sekmeler uyur. Baktığın, ses çalan ve sabit sekmeler uyumaz</span></span>
+          <select data-setting="memoryLimitMb" data-number>
+            <option value="0">Sınır yok</option>
+            <option value="1024">1 GB</option>
+            <option value="2048">2 GB</option>
+            <option value="4096">4 GB</option>
+            <option value="8192">8 GB</option>
+          </select>
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Eski sekmeleri arşivle</span><span class="setting-note">Uzun süre açmadığın sekmeler kapanır, Arşiv'den geri açılır. Sabit sekmelere dokunulmaz</span></span>
+          <select data-setting="archiveDays" data-number>
+            <option value="0">Kapalı</option>
+            <option value="1">1 gün</option>
+            <option value="3">3 gün</option>
+            <option value="7">7 gün</option>
+            <option value="14">14 gün</option>
+            <option value="30">30 gün</option>
+          </select>
+        </label>
+        <label class="setting">
+          <span><span class="setting-name">Oyun modu</span><span class="setting-note">Tam ekran bir oyun açılınca arka plandaki sekmeler uyur, oyuna RAM kalır</span></span>
+          <input type="checkbox" role="switch" class="switch" data-setting="gameMode">
+        </label>
         <div class="setting">
-          <span>
-            <span class="setting-name">Raven 0.1.0</span>
-            <span class="setting-note">Raven Browser License. Kaynak kodu GitHub'da açık</span>
-          </span>
+          <span><span class="setting-name">Şu anki RAM kullanımı</span><span id="memory-now" class="setting-note">Ölçülüyor…</span></span>
+          <button id="memory-refresh" class="secondary">Ölç</button>
+        </div>
+      </section>
+
+      <section id="set-import" class="settings-group">
+        <h2>İçe aktar</h2>
+        <div class="setting">
+          <span><span class="setting-name">Başka tarayıcıdan taşı</span><span id="import-status" class="setting-note">Yer imleri ve geçmiş kopyalanır</span></span>
+          <div class="button-row" id="import-buttons"></div>
+        </div>
+      </section>
+
+      <section id="set-about" class="settings-group">
+        <h2>Hakkında</h2>
+        <div class="setting">
+          <span><span class="setting-name">Raven 0.2.0</span><span class="setting-note">Raven Browser License. Kaynak kodu GitHub'da açık</span></span>
           <button id="settings-github" class="secondary">GitHub'da aç</button>
         </div>
       </section>
+    </div>
+  </section>
+
+  <!-- Archive: tabs closed by the automatic cleanup. -->
+  <section id="archive-panel" class="panel" aria-labelledby="archive-title" hidden>
+    <div class="panel-inner">
+      <div class="panel-head">
+        <h1 id="archive-title">Arşiv</h1>
+        <button id="archive-clear" class="secondary">Arşivi boşalt</button>
+        <button class="icon-button panel-close" aria-label="Kapat (Esc)" title="Kapat (Esc)">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="panel-note">Uzun süre açmadığın sekmeler burada. Birine basınca yeni sekmede açılır</p>
+      <div id="archive-list" class="history-list"></div>
+      <p id="archive-empty" class="empty" hidden>Arşiv boş</p>
     </div>
   </section>
 
@@ -186,7 +309,7 @@
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
-      <p class="panel-note">Mağazada bir uzantının sayfasını aç, sağ alttaki “Raven'a ekle” düğmesine bas. Ya da linkini buraya yapıştır</p>
+      <p class="panel-note">Mağazada bir uzantının sayfasını aç ve “Raven'a ekle” düğmesine bas. Ya da linkini buraya yapıştır</p>
 
       <div id="extension-confirm" class="extension-confirm" hidden>
         <span id="extension-confirm-text"></span>
@@ -206,9 +329,27 @@
 
       <div id="extensions-list" class="extensions-list"></div>
       <p id="extensions-empty" class="empty" hidden>Henüz uzantı yok</p>
-      <p class="panel-note">Uzantıların araç çubuğu düğmesi henüz yok. Ayarlarını “Ayarlar” ile açabilirsin</p>
     </div>
   </section>
+
+  <!-- Header of the AI panel at the right (the AI's page is under it). -->
+  <div id="ai-header" class="ai-header" hidden>
+    <div class="ai-providers" role="radiogroup" aria-label="Yapay zeka"></div>
+    <div class="ai-actions">
+      <button class="ai-chip" data-ai="summarize" title="Bu sayfayı özetle">Özetle</button>
+      <button class="ai-chip" data-ai="explain" title="Bu sayfayı basitçe açıkla">Açıkla</button>
+      <button class="ai-chip" data-ai="translate" title="Bu sayfayı Türkçeye çevir">Çevir</button>
+    </div>
+    <button id="ai-reload" class="icon-button small" aria-label="Yapay zekayı yenile" title="Yenile">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+    <button id="ai-close" class="icon-button small" aria-label="Paneli kapat" title="Kapat (Ctrl + Boşluk)">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <!-- Shown while Raven is in full screen (F11): how to leave. -->
+  <div id="fullscreen-hint" class="fullscreen-hint" hidden>Tam ekrandan çıkmak için F11</div>
 
   <template id="tab-template">
     <div class="tab" role="tab">

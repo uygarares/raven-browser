@@ -97,14 +97,14 @@ function activeTab() {
 
 // The ⋮ menu: new tab, new windows, zoom, history, downloads, bookmarks bar, settings.
 const MENU_WIDTH = 328;
-const MENU_HEIGHT = 9 * 34 + 3 * 11 + 14;
+const MENU_HEIGHT = 16 * 34 + 4 * 11 + 14;
 popupButton(document.getElementById("menu-button"), "menu", (rect) => {
   const tab = activeTab();
   const page = Boolean(tab && tab.url !== "");
   openPopup(
     "menu",
     { zoom: page ? tab.zoom : 1, page, bar: document.body.classList.contains("with-bookmarks-bar") },
-    { x: rect.right - MENU_WIDTH, y: rect.bottom + 4, width: MENU_WIDTH, height: MENU_HEIGHT },
+    { x: rect.right - MENU_WIDTH, y: rect.bottom + 4, width: MENU_WIDTH, height: Math.min(MENU_HEIGHT, window.innerHeight - rect.bottom - 12) },
   );
 });
 
@@ -123,37 +123,52 @@ popupButton(siteButton, "site-info", (rect) => {
   openPopup("site-info", { url: tab.url }, { x: rect.left - 6, y: rect.bottom + 8, width: 320, height: web ? 352 : 120 });
 });
 
-// The ad blocker's shield and the extensions button.
+// Raven Shield: lit while it blocks, with the number blocked on this page.
 const adblockButton = document.getElementById("adblock-button");
-let adblock = null;
+const shieldCount = document.createElement("span");
+shieldCount.className = "shield-count";
+shieldCount.hidden = true;
+adblockButton.append(shieldCount);
+let shield = null;
+const pageCounts = new Map();
 
-async function refreshAdblock() {
-  try {
-    adblock = await invoke("get_adblock");
-  } catch (error) {
-    adblock = { id: null, enabled: false, busy: false, error: String(error) };
-  }
-  adblockButton.classList.toggle("on", Boolean(adblock.id && adblock.enabled));
-  adblockButton.classList.toggle("busy", adblock.busy);
-  const label = adblock.busy ? "Reklam engelleyici kuruluyor" : adblock.id && adblock.enabled ? "Reklamlar engelleniyor" : "Reklam engelleyici kapalı";
+function showShieldCount() {
+  const count = pageCounts.get(state.active) || 0;
+  shieldCount.hidden = count === 0 || !shield?.on || !shield?.siteOn;
+  shieldCount.textContent = count > 99 ? "99+" : String(count);
+}
+
+async function refreshShield() {
+  shield = await run("get_shield");
+  if (!shield) return;
+  const lit = shield.on && shield.siteOn && shield.ready;
+  adblockButton.classList.toggle("on", lit);
+  adblockButton.classList.toggle("busy", shield.on && !shield.ready && !shield.error);
+  const label = !shield.on ? "Raven Kalkanı kapalı" : !shield.siteOn ? "Bu sitede kalkan kapalı" : "Raven Kalkanı: reklamlar ve izleyiciler engelleniyor";
   adblockButton.title = label;
   adblockButton.setAttribute("aria-label", label);
+  if (typeof shield.page === "number" && state.active != null) pageCounts.set(state.active, shield.page);
+  showShieldCount();
 }
-refreshAdblock();
-listen("extensions-changed", refreshAdblock);
-listen("extension-install", refreshAdblock);
+refreshShield();
+listen("shield-ready", refreshShield);
+listen("settings", refreshShield);
+listen("shield-counts", ({ payload }) => {
+  for (const [id, count] of payload) pageCounts.set(id, count);
+  showShieldCount();
+});
 
+const SHIELD_HEIGHT = 338;
 popupButton(adblockButton, "adblock", async (rect) => {
-  await refreshAdblock();
-  const width = 300;
-  const height = adblock.id ? (adblock.hasOptions ? 178 : 132) : adblock.busy ? 96 : 140;
-  openPopup("adblock", adblock, { x: rect.right - width, y: rect.bottom + 4, width, height });
+  await refreshShield();
+  const width = 320;
+  openPopup("adblock", shield || {}, { x: rect.right - width, y: rect.bottom + 4, width, height: SHIELD_HEIGHT + (shield?.error ? 46 : 0) });
 });
 
 popupButton(document.getElementById("extensions-button"), "extensions", async (rect) => {
   let items = [];
   try {
-    items = (await invoke("get_extensions")).filter((item) => !item.adblock);
+    items = await invoke("get_extensions");
   } catch (error) {
     console.error(error);
   }
@@ -368,6 +383,7 @@ function updateTab(el, tab) {
   el.classList.toggle("loading", isLoading);
   el.classList.toggle("new-tab-page", isNewTabPage);
   el.classList.toggle("pinned", Boolean(tab.pinned));
+  el.classList.toggle("asleep", Boolean(tab.asleep) && !isActive);
   el.setAttribute("aria-selected", String(isActive));
   if (el.title !== tab.title) {
     el.title = tab.title;
@@ -461,8 +477,10 @@ function renderSecurity(url) {
 }
 
 listenHere("tabs", (payload) => {
+  const switched = payload.active !== state.active;
   state = payload;
   render();
+  if (switched) showShieldCount();
 });
 
 run("get_tabs").then((payload) => {
@@ -670,7 +688,8 @@ historyClear.addEventListener("click", async () => {
 const panels = {
   history: { el: historyPanel, load: loadHistory, focus: historySearch },
   downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
-  settings: { el: document.getElementById("settings-panel"), load: loadSettings },
+  settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings(); showMemory(); loadImportSources(); } },
+  archive: { el: document.getElementById("archive-panel"), load: loadArchive },
   extensions: { el: document.getElementById("extensions-panel"), load: loadExtensions },
 };
 let openPanelName = null;
@@ -711,6 +730,7 @@ document.querySelectorAll(".panel-close").forEach((button) => button.addEventLis
 listenHere("open-history", () => openPanel("history"));
 listenHere("open-downloads", () => openPanel("downloads"));
 listenHere("open-settings", () => openPanel("settings"));
+listenHere("open-archive", () => openPanel("archive"));
 listenHere("open-extensions", (payload) => {
   openPanel("extensions");
   if (payload.install) askToInstall(payload.install);
@@ -829,13 +849,26 @@ listen("downloads", ({ payload }) => {
 });
 loadDownloads();
 
-// Settings
+// Settings. Every input with data-setting="name" shows and saves that setting.
 
 let settings = null;
 let engines = [];
 const searchEngine = document.getElementById("search-engine");
-const restoreSession = document.getElementById("restore-session");
-const showBar = document.getElementById("show-bookmarks-bar");
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+
+/// Raven's colours: dark, light or the system's, and the accent colour.
+function applyLook() {
+  if (!settings) return;
+  const appearance = settings.appearance === "system" ? (systemDark.matches ? "dark" : "light") : settings.appearance;
+  document.documentElement.dataset.appearance = appearance;
+  document.documentElement.dataset.accent = settings.accent;
+  // The new tab page and the menus read these.
+  try {
+    localStorage.setItem("raven-appearance", appearance);
+    localStorage.setItem("raven-accent", settings.accent);
+  } catch {}
+}
+systemDark.addEventListener("change", applyLook);
 
 /// The new tab page cannot ask Raven, so it reads the search address from here.
 function rememberSearch() {
@@ -850,17 +883,28 @@ function rememberSearch() {
 
 function showSettings() {
   if (!settings) return;
-  searchEngine.replaceChildren(
-    ...engines.map((engine) => {
-      const option = document.createElement("option");
-      option.value = engine.id;
-      option.textContent = engine.name;
-      return option;
-    }),
-  );
-  searchEngine.value = settings.searchEngine;
-  restoreSession.checked = settings.restoreSession;
-  showBar.checked = settings.showBookmarksBar;
+  if (searchEngine.options.length !== engines.length) {
+    searchEngine.replaceChildren(
+      ...engines.map((engine) => {
+        const option = document.createElement("option");
+        option.value = engine.id;
+        option.textContent = engine.name;
+        return option;
+      }),
+    );
+  }
+  for (const el of document.querySelectorAll("[data-setting]")) {
+    const value = settings[el.dataset.setting];
+    if (el.type === "checkbox") el.checked = Boolean(value);
+    else if (el.tagName === "SELECT") el.value = String(value);
+    else {
+      for (const option of el.querySelectorAll("[data-value]")) {
+        option.setAttribute("aria-checked", String(option.dataset.value === String(value)));
+      }
+    }
+  }
+  applyLook();
+  renderProviders();
 }
 
 async function loadSettings() {
@@ -877,9 +921,23 @@ async function saveSettings(change) {
   rememberSearch();
 }
 
-searchEngine.addEventListener("change", () => saveSettings({ searchEngine: searchEngine.value }));
-restoreSession.addEventListener("change", () => saveSettings({ restoreSession: restoreSession.checked }));
-showBar.addEventListener("change", () => saveSettings({ showBookmarksBar: showBar.checked }));
+for (const el of document.querySelectorAll("[data-setting]")) {
+  const name = el.dataset.setting;
+  if (el.type === "checkbox") {
+    el.addEventListener("change", () => saveSettings({ [name]: el.checked }));
+  } else if (el.tagName === "SELECT") {
+    el.addEventListener("change", () => {
+      const value = el.hasAttribute("data-number") ? Number(el.value) : el.value;
+      if (name === "aiProvider") run("set_ai_provider", { provider: value }).then(loadSettings);
+      else saveSettings({ [name]: value });
+    });
+  } else {
+    el.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-value]");
+      if (option) saveSettings({ [name]: option.dataset.value });
+    });
+  }
+}
 
 listen("settings", ({ payload }) => {
   settings = payload;
@@ -893,6 +951,44 @@ listen("bookmarks-bar", () => run("get_settings").then((saved) => {
     showSettings();
   }
 }));
+
+// RAM now.
+async function showMemory() {
+  const info = await run("get_memory");
+  const note = document.getElementById("memory-now");
+  if (!info) return;
+  const total = info.totalMb == null ? "Ölçülemedi" : info.totalMb >= 1024 ? `${(info.totalMb / 1024).toFixed(1)} GB` : `${info.totalMb} MB`;
+  note.textContent = `${total} · ${info.awake} açık, ${info.asleep} uyuyan sekme`;
+}
+document.getElementById("memory-refresh").addEventListener("click", showMemory);
+
+// Import from other browsers.
+const importButtons = document.getElementById("import-buttons");
+const importStatus = document.getElementById("import-status");
+async function loadImportSources() {
+  const sources = (await run("get_import_sources")) || [];
+  importButtons.replaceChildren(
+    ...sources.map((source) => {
+      const button = document.createElement("button");
+      button.className = "secondary";
+      button.textContent = source.name;
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        importStatus.textContent = `${source.name} içe aktarılıyor…`;
+        try {
+          const result = await invoke("import_browser", { id: source.id });
+          importStatus.textContent = `${source.name}: ${result.bookmarks} yer imi, ${result.history} geçmiş kaydı eklendi`;
+        } catch (error) {
+          importStatus.textContent = String(error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      return button;
+    }),
+  );
+  if (sources.length === 0) importStatus.textContent = "Bu bilgisayarda başka tarayıcı bulunamadı";
+}
 
 /// Buttons that ask once more before deleting something.
 function confirmButton(button, action) {
@@ -1074,12 +1170,168 @@ listen("extensions-changed", () => {
   if (openPanelName === "extensions") loadExtensions();
 });
 
+// Archive: tabs the automatic cleanup closed.
+
+const archiveList = document.getElementById("archive-list");
+async function loadArchive() {
+  const items = (await run("get_archive")) || [];
+  document.getElementById("archive-empty").hidden = items.length > 0;
+  archiveList.replaceChildren(
+    ...items.map((item, index) => {
+      const row = document.createElement("div");
+      row.className = "history-row";
+      const time = document.createElement("span");
+      time.className = "history-time";
+      time.textContent = new Date(item.time * 1000).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+      const link = document.createElement("button");
+      link.className = "history-link";
+      const mark = document.createElement("span");
+      mark.className = "mark-small";
+      RavenIcons.fill(mark, item.url, item.title);
+      const title = document.createElement("span");
+      title.className = "history-title";
+      title.textContent = item.title || item.url;
+      const host = document.createElement("span");
+      host.className = "history-host";
+      host.textContent = RavenIcons.hostOf(item.url);
+      link.append(mark, title, host);
+      link.addEventListener("click", () => {
+        closePanel();
+        run("open_archived", { index });
+      });
+      row.append(time, link);
+      return row;
+    }),
+  );
+}
+document.getElementById("archive-clear").addEventListener("click", async () => {
+  await run("clear_archive");
+  loadArchive();
+});
+listen("archive", () => {
+  if (openPanelName === "archive") loadArchive();
+});
+
+// The AI panel at the right: Claude, ChatGPT or Gemini with your own account.
+
+const aiButton = document.getElementById("ai-button");
+const aiHeader = document.getElementById("ai-header");
+const aiProviders = aiHeader.querySelector(".ai-providers");
+const AI_NAMES = { claude: "Claude", chatgpt: "ChatGPT", gemini: "Gemini" };
+
+function renderProviders() {
+  if (!settings) return;
+  aiProviders.replaceChildren(
+    ...Object.entries(AI_NAMES).map(([id, name]) => {
+      const button = document.createElement("button");
+      button.className = "ai-provider";
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", String(settings.aiProvider === id));
+      button.textContent = name;
+      button.addEventListener("click", () => run("set_ai_provider", { provider: id }).then(loadSettings));
+      return button;
+    }),
+  );
+}
+
+function showAiPanel(open) {
+  document.body.classList.toggle("ai-open", open);
+  aiHeader.hidden = !open;
+  aiButton.setAttribute("aria-pressed", String(open));
+}
+
+aiButton.addEventListener("click", () => run("toggle_ai_panel", {}));
+document.getElementById("ai-close").addEventListener("click", () => run("toggle_ai_panel", { open: false }));
+document.getElementById("ai-reload").addEventListener("click", () => run("reload_ai"));
+aiHeader.querySelectorAll("[data-ai]").forEach((chip) =>
+  chip.addEventListener("click", async () => {
+    try {
+      await invoke("ask_ai", { action: chip.dataset.ai, question: null });
+    } catch (error) {
+      chip.title = String(error);
+    }
+  }),
+);
+listenHere("ai-panel", (payload) => showAiPanel(payload.open));
+
+// Full screen (F11, or a video's full screen button).
+let hintTimer = null;
+listenHere("fullscreen", (payload) => {
+  document.body.classList.toggle("fullscreen", payload.on);
+  const hint = document.getElementById("fullscreen-hint");
+  hint.hidden = !payload.on;
+  clearTimeout(hintTimer);
+  if (payload.on) hintTimer = setTimeout(() => (hint.hidden = true), 2500);
+});
+
+// Hover card: title, address and memory of a tab, like Chrome.
+let cardTimer = null;
+let cardFor = null;
+tabsEl.addEventListener("mouseover", (event) => {
+  const el = event.target.closest(".tab");
+  if (!el || drag || popupKind === "tab-menu") return;
+  const id = Number(el.dataset.id);
+  if (cardFor === id) return;
+  clearTimeout(cardTimer);
+  cardTimer = setTimeout(() => {
+    const tab = state.tabs.find((item) => item.id === id);
+    if (!tab || (popupKind && popupKind !== "tab-card")) return;
+    cardFor = id;
+    const rect = el.getBoundingClientRect();
+    openPopup(
+      "tab-card",
+      { title: tab.title, url: tab.url, memory: tab.memory, asleep: tab.asleep && tab.id !== state.active, audible: tab.audible },
+      { x: Math.max(8, rect.left), y: rect.bottom + 6, width: 300, height: 92, focus: false },
+    );
+  }, cardFor ? 80 : 550);
+});
+tabsEl.addEventListener("mouseleave", () => {
+  clearTimeout(cardTimer);
+  if (popupKind === "tab-card") closePopup();
+  cardFor = null;
+});
+tabsEl.addEventListener("mousedown", () => {
+  clearTimeout(cardTimer);
+  if (popupKind === "tab-card") closePopup();
+  cardFor = null;
+});
+
+// Find in page (Ctrl+F): a small bar at the top right of the page.
+function pageRect() {
+  const slot = document.querySelector(".page-slot").getBoundingClientRect();
+  return slot;
+}
+listenHere("open-find", () => {
+  const page = pageRect();
+  const width = 380;
+  openPopup("find", {}, { x: page.right - width - 12, y: page.top + 10, width, height: 56 });
+});
+
+// Command palette (Ctrl+K) and tab search (Ctrl+Shift+A).
+function openPalette(mode) {
+  const width = Math.min(640, window.innerWidth - 80);
+  openPopup("palette", { mode, active: state.active }, { x: (window.innerWidth - width) / 2, y: 70, width, height: 440 });
+}
+listenHere("open-palette", () => openPalette("all"));
+listenHere("open-tab-search", () => openPalette("tabs"));
+
+// Game mode badge.
+listen("game-mode", ({ payload }) => document.body.classList.toggle("game-mode", payload));
+
 // Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
 // catches them itself (src-tauri/src/shortcuts.rs); these cover the toolbar.
 function actionFor(event) {
+  if (event.key === "F11") return "fullscreen";
+  if (event.key === "F12") return "dev-tools";
   if (!event.ctrlKey || event.altKey) return null;
   const key = event.key.toLowerCase();
   const shift = event.shiftKey;
+  if (key === " " && !shift) return "toggle-ai";
+  if (key === "f" && !shift) return "find";
+  if (key === "p" && !shift) return "print";
+  if (key === "k" && !shift) return "command-palette";
+  if (key === "a" && shift) return "tab-search";
+  if (key === "i" && shift) return "dev-tools";
   if (key === "t") return shift ? "reopen-tab" : "new-tab";
   if (key === "n") return shift ? "new-private-window" : "new-window";
   if (key === "+" || key === "=") return "zoom-in";
