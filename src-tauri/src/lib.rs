@@ -88,6 +88,8 @@ pub fn run() {
             permissions::get_site_permissions,
             permissions::set_site_permission,
             permissions::reset_site_permissions,
+            permissions::get_site_cookies,
+            permissions::clear_site_data,
             suggest::get_suggestions,
             extensions::get_extensions,
             extensions::install_extension,

@@ -80,6 +80,14 @@ pub fn save_page(webview: &Webview) {
     imp::save_page(webview);
 }
 
+/// How many cookies a site has; with `delete`, removes them too. Call it off
+/// the main thread.
+pub fn site_cookies(webview: &Webview, url: &str, delete: bool) -> Result<usize, String> {
+    let (tx, rx) = mpsc::channel();
+    imp::site_cookies(webview, url.to_string(), delete, tx)?;
+    rx.recv_timeout(Duration::from_secs(5)).map_err(|_| "No answer".to_string())?
+}
+
 /// Memory of Raven's browser processes: the total, and per page address
 /// (the renderer that shows that page), in bytes.
 pub struct Memory {
@@ -351,6 +359,47 @@ mod imp {
         });
     }
 
+    pub fn site_cookies(webview: &Webview, url: String, delete: bool, tx: Sender<Result<usize, String>>) -> Result<(), String> {
+        use webview2_com::GetCookiesCompletedHandler;
+        webview
+            .with_webview(move |platform| unsafe {
+                let manager = platform
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.cast::<ICoreWebView2_2>())
+                    .and_then(|core| core.CookieManager());
+                let manager = match manager {
+                    Ok(manager) => manager,
+                    Err(error) => {
+                        let _ = tx.send(Err(error.to_string()));
+                        return;
+                    }
+                };
+                let reply = tx.clone();
+                let deleter = manager.clone();
+                let handler = GetCookiesCompletedHandler::create(Box::new(move |result, list| {
+                    let count = result.and_then(|_| unsafe {
+                        let Some(list) = list else { return Ok(0) };
+                        let mut count = 0u32;
+                        list.Count(&mut count)?;
+                        if delete {
+                            for i in 0..count {
+                                let cookie = list.GetValueAtIndex(i)?;
+                                let _ = deleter.DeleteCookie(&cookie);
+                            }
+                        }
+                        Ok(count as usize)
+                    });
+                    let _ = reply.send(count.map_err(|e| e.to_string()));
+                    Ok(())
+                }));
+                if let Err(error) = manager.GetCookies(&HSTRING::from(url.as_str()), &handler) {
+                    let _ = tx.send(Err(error.to_string()));
+                }
+            })
+            .map_err(|e| e.to_string())
+    }
+
     fn working_set(pid: u32) -> u64 {
         unsafe {
             let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return 0 };
@@ -451,6 +500,10 @@ mod imp {
         Ok(())
     }
     pub fn save_page(_webview: &Webview) {}
+    pub fn site_cookies(_webview: &Webview, _url: String, _delete: bool, tx: Sender<Result<usize, String>>) -> Result<(), String> {
+        let _ = tx.send(Err("Only on Windows".into()));
+        Ok(())
+    }
     pub fn memory(_webview: &Webview, tx: Sender<Result<Memory, String>>) -> Result<(), String> {
         let _ = tx.send(Err("Only on Windows".into()));
         Ok(())

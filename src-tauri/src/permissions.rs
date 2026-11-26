@@ -131,3 +131,28 @@ mod tests {
         assert_eq!(choice_for(&saved, "example.com", "camera"), Choice::Ask);
     }
 }
+
+/// Cookies of the active tab's site (site info box).
+#[tauri::command]
+pub async fn get_site_cookies(app: AppHandle, webview: tauri::Webview) -> Result<usize, String> {
+    let window = crate::windows::window_of(&webview);
+    let tab = crate::tabs::active_webview(&app, &window).ok_or("No page")?;
+    let (url, _) = crate::tabs::active_page(&app, &window).ok_or("No page")?;
+    tauri::async_runtime::spawn_blocking(move || crate::native::site_cookies(&tab, &url, false))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Deletes the active site's cookies and stored data, then reloads it.
+#[tauri::command]
+pub async fn clear_site_data(app: AppHandle, webview: tauri::Webview) -> Result<usize, String> {
+    let window = crate::windows::window_of(&webview);
+    let tab = crate::tabs::active_webview(&app, &window).ok_or("No page")?;
+    let (url, _) = crate::tabs::active_page(&app, &window).ok_or("No page")?;
+    let worker = tab.clone();
+    let count = tauri::async_runtime::spawn_blocking(move || crate::native::site_cookies(&worker, &url, true))
+        .await
+        .map_err(|e| e.to_string())??;
+    let _ = tab.eval("try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} location.reload();");
+    Ok(count)
+}

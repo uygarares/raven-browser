@@ -246,7 +246,22 @@ async function drawSiteInfo(data) {
         ]),
       );
     }
+    const cookies = el("span", { class: "label", text: "Çerezler ve site verileri" });
+    run("get_site_cookies").then((count) => {
+      if (typeof count === "number") cookies.textContent = `${count} çerez ve site verileri`;
+    });
+    const clear = el("button", {
+      class: "reset",
+      text: "Sil",
+      title: "Bu sitenin çerezlerini ve kayıtlı verilerini sil (oturumun kapanır)",
+      onclick: async () => {
+        clear.disabled = true;
+        const removed = await run("clear_site_data");
+        cookies.textContent = typeof removed === "number" ? `${removed} çerez silindi` : "Silindi";
+      },
+    });
     children.push(
+      el("div", { class: "permission", html: ICONS.archive }, [cookies, clear]),
       el("div", { class: "site-foot" }, [
         el("button", {
           class: "reset",
