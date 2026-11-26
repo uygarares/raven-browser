@@ -396,6 +396,17 @@ pub fn open_window(
             layout(&events, &name);
             close_popup(&events, &name);
         }
+        WindowEvent::CloseRequested { .. } => {
+            // Closing the last normal window with "clear on exit": wipe now,
+            // while a webview can still do it (and again at the next start).
+            let last = window_labels(&events).iter().filter(|w| !is_private(&events, w)).count() <= 1;
+            if last && events.state::<crate::settings::SettingsState>().0.lock().unwrap().clear_on_exit {
+                crate::history::clear_now(&events);
+                if let Some(toolbar) = events.get_webview(&ui_label(&name)) {
+                    let _ = toolbar.clear_all_browsing_data();
+                }
+            }
+        }
         WindowEvent::Destroyed => window_closed(&events, &name),
         _ => {}
     });

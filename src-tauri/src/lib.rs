@@ -35,6 +35,10 @@ use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent};
 
+fn settings_clear(app: &tauri::AppHandle) -> bool {
+    app.state::<settings::SettingsState>().0.lock().unwrap().clear_on_exit
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -154,6 +158,12 @@ pub fn run() {
             let last_session = session::load(handle);
             bookmarks::refresh_bar(handle);
 
+            // "Clear on exit" may not have finished last time: clear history now,
+            // cookies once the first window exists.
+            let clear_on_start = settings_clear(handle);
+            if clear_on_start {
+                history::clear_now(handle);
+            }
             // Reopen the last windows and tabs, or start with one new window.
             let saved_windows = if restore { last_session.saved_windows() } else { Vec::new() };
             if saved_windows.is_empty() {
@@ -161,6 +171,11 @@ pub fn run() {
             } else {
                 for saved in &saved_windows {
                     windows::open_window(handle, false, Some(saved))?;
+                }
+            }
+            if clear_on_start {
+                if let Some((_, toolbar)) = handle.webviews().into_iter().find(|(l, _)| l.starts_with("ui-")) {
+                    let _ = toolbar.clear_all_browsing_data();
                 }
             }
             // Started with a link (Raven is the default browser).

@@ -64,6 +64,8 @@ pub struct Settings {
     pub panel_sites: Vec<PanelSite>,
     /// The theme from the theme store (its colours live in the toolbar).
     pub theme_id: String,
+    /// Delete history, cookies and site data when Raven closes (like Brave).
+    pub clear_on_exit: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -118,6 +120,7 @@ impl Default for Settings {
             welcome: 0,
             panel_sites: Vec::new(),
             theme_id: "raven".into(),
+            clear_on_exit: false,
         }
     }
 }

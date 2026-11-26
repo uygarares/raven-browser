@@ -1154,6 +1154,21 @@ async function loadThemes() {
 }
 document.getElementById("open-themes").addEventListener("click", () => openPanel("themes"));
 
+// Settings search: shows only the settings whose words match.
+const settingsSearch = document.getElementById("settings-search");
+settingsSearch.addEventListener("input", () => {
+  const query = settingsSearch.value.trim().toLocaleLowerCase("tr");
+  for (const group of document.querySelectorAll("#settings-panel .settings-group")) {
+    let any = false;
+    for (const row of group.querySelectorAll(".setting")) {
+      const match = !query || row.textContent.toLocaleLowerCase("tr").includes(query) || group.querySelector("h2").textContent.toLocaleLowerCase("tr").includes(query);
+      row.hidden = !match;
+      any ||= match;
+    }
+    group.hidden = !any;
+  }
+});
+
 // Default browser.
 const defaultButton = document.getElementById("default-browser");
 async function showDefault() {

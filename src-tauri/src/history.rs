@@ -231,10 +231,14 @@ pub async fn remove_history_entry(app: AppHandle, url: String, time: i64) {
 
 #[tauri::command]
 pub async fn clear_history(app: AppHandle) {
+    clear_now(&app);
+}
+
+pub fn clear_now(app: &AppHandle) {
     let history = app.state::<History>();
     history.entries.lock().unwrap().clear();
     history.dirty.store(true, Ordering::SeqCst);
-    flush(&app);
+    flush(app);
 }
 
 #[cfg(test)]

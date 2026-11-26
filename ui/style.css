@@ -894,3 +894,6 @@ body.vertical-tabs .tab[data-color]:not([data-color=""])::before { left: -6px; r
 .theme-page { position: absolute; left: 8px; right: 8px; top: 30px; bottom: 8px; border-radius: 7px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .theme-name { font-weight: 800; font-size: 14px; padding-left: 2px; }
 .theme-author { color: var(--text-3); font-size: 12px; padding-left: 2px; }
+
+.panel.settings .panel-head { justify-content: space-between; gap: 12px; }
+.settings-search { flex: 1; max-width: 420px; margin: 0; height: 40px; }
