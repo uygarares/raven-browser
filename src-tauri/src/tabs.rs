@@ -537,6 +537,7 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     let on_link = app.clone();
     let on_download = app.clone();
     let on_permission = app.clone();
+    let last_cleaned: std::sync::Mutex<Option<(String, std::time::Instant)>> = std::sync::Mutex::new(None);
     let builder = extensions::allow(WebviewBuilder::new(label(id), target))
         .background_color(background_for(&url))
         // Private windows use WebView2's InPrivate mode.
@@ -583,8 +584,15 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                 return false;
             }
             // Tracking parameters (utm_source, fbclid...) are removed before the page loads.
+            // If the site puts them back right away, it gets its way (no endless loop).
             if crate::shield::cleans_urls(&on_link) {
                 if let Some(clean) = crate::shield::clean_url(url) {
+                    let mut last = last_cleaned.lock().unwrap();
+                    if last.as_ref().is_some_and(|(u, when): &(String, std::time::Instant)| *u == clean.as_str() && when.elapsed().as_secs() < 10) {
+                        return true;
+                    }
+                    *last = Some((clean.to_string(), std::time::Instant::now()));
+                    drop(last);
                     let app = on_link.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Some(tab) = app.get_webview(&label(id)) {
