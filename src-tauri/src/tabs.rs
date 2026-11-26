@@ -599,6 +599,21 @@ pub fn open_here(app: &AppHandle, window: &str, url: &str) -> Result<(), String>
 
 /// Closes a tab. Closing the last tab of a window closes the window, like other browsers.
 pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
+    // The window's last tab: instead of closing the window, go to a new tab
+    // page. If it already is one, nothing happens.
+    let last = with_tabs(app, |list| {
+        let info = list.info.get(&id)?;
+        let count = list.windows.get(&info.window)?.order.len();
+        (count == 1).then(|| (info.window.clone(), is_new_tab_url(&info.url) || info.url.is_empty()))
+    });
+    if let Some((window, new_tab_page)) = last {
+        if new_tab_page {
+            return Ok(());
+        }
+        // The new tab opens first, so closing this one leaves it.
+        create_tab(app, &window, NEW_TAB, true).map_err(|e| e.to_string())?;
+    }
+
     let result = with_tabs(app, |list| {
         let info = list.info.remove(&id)?;
         if !info.private {
