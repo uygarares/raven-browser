@@ -79,6 +79,8 @@ pub fn run() {
             settings::get_search_engines,
             settings::clear_browsing_data,
             settings::clear_data,
+            tabs::get_closed_tabs,
+            tabs::reopen_closed_tab,
             bookmarks::get_bookmarks,
             bookmarks::toggle_bookmark,
             bookmarks::remove_bookmark,

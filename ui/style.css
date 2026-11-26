@@ -918,3 +918,24 @@ body.vertical-tabs .tab[data-color]:not([data-color=""])::before { left: -6px; r
 .sync-form .button-row { flex: 1 1 100%; }
 .sync-help { align-items: flex-start; }
 .sync-sql { margin: 10px 0 0; padding: 12px; border-radius: 10px; background: var(--field); color: var(--text-2); font: 12px/1.5 var(--mono); white-space: pre-wrap; user-select: text; }
+
+/* Recently closed tabs on the history page. */
+.closed-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+.closed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  height: 36px;
+  padding: 0 14px 0 10px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text);
+  font: 700 13px var(--font);
+  cursor: default;
+  transition: background-color 150ms var(--ease), transform 150ms var(--ease);
+}
+.closed-chip:hover { background: var(--surface-2); transform: translateY(-1px); }
+.closed-chip span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

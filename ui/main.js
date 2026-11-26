@@ -699,10 +699,39 @@ function hostOf(url) {
 }
 
 async function loadHistory() {
-  const entries = (await run("get_history", { query: historySearch.value })) || [];
+  const [entries, closed] = await Promise.all([
+    run("get_history", { query: historySearch.value }).then((list) => list || []),
+    historySearch.value ? [] : run("get_closed_tabs").then((list) => list || []),
+  ]);
   historyEmpty.hidden = entries.length > 0;
   historyEmpty.textContent = historySearch.value ? "Sonuç yok" : "Henüz geçmiş yok";
   const items = [];
+  // Recently closed tabs first, like Chrome's history menu.
+  if (closed.length) {
+    const heading = document.createElement("h2");
+    heading.className = "history-day";
+    heading.textContent = "Son kapatılan sekmeler";
+    const strip = document.createElement("div");
+    strip.className = "closed-strip";
+    for (const tab of closed.slice(0, 8)) {
+      const chip = document.createElement("button");
+      chip.className = "closed-chip";
+      chip.title = tab.url;
+      const mark = document.createElement("span");
+      mark.className = "mark-small";
+      mark.setAttribute("aria-hidden", "true");
+      RavenIcons.fill(mark, tab.url, tab.title);
+      const name = document.createElement("span");
+      name.textContent = tab.title || hostOf(tab.url);
+      chip.append(mark, name);
+      chip.addEventListener("click", () => {
+        closePanel();
+        run("reopen_closed_tab", { url: tab.url });
+      });
+      strip.append(chip);
+    }
+    items.push(heading, strip);
+  }
   let lastDay = "";
   for (const entry of entries) {
     const date = new Date(entry.time);
@@ -1837,6 +1866,17 @@ function showToast(text, action = null) {
   }, action ? 9000 : 3500);
 }
 
+// A page in another language: offer Google Translate, once per site.
+const LANGUAGES = { en: "İngilizce", de: "Almanca", fr: "Fransızca", es: "İspanyolca", it: "İtalyanca", ru: "Rusça", ar: "Arapça", ja: "Japonca", zh: "Çince", ko: "Korece", pt: "Portekizce", nl: "Felemenkçe", pl: "Lehçe", uk: "Ukraynaca", el: "Yunanca", fa: "Farsça", az: "Azerbaycan Türkçesi", hi: "Hintçe", sv: "İsveççe" };
+const translateOffered = new Set();
+listenHere("offer-translate", (payload) => {
+  if (payload.tab !== state.active || translateOffered.has(payload.host)) return;
+  translateOffered.add(payload.host);
+  const language = LANGUAGES[payload.lang] || "başka bir dilde";
+  const text = LANGUAGES[payload.lang] ? `Bu sayfa ${language}` : "Bu sayfa başka bir dilde";
+  showToast(text, { label: "Türkçeye çevir", url: `https://translate.google.com/translate?sl=auto&tl=tr&hl=tr&u=${encodeURIComponent(payload.url)}` });
+});
+
 // A missing page or a site that is down: offer the copy in the Internet Archive.
 listenHere("page-failed", (payload) => {
   if (payload.tab !== state.active) return;
@@ -1854,6 +1894,10 @@ function showQr() {
 }
 listenHere("toolbar-command", (payload) => {
   if (payload.command === "qr") showQr();
+  if (payload.command === "translate") {
+    const tab = activeTab();
+    if (tab?.url?.startsWith("http")) run("open_url", { url: `https://translate.google.com/translate?sl=auto&tl=tr&hl=tr&u=${encodeURIComponent(tab.url)}`, newTab: false });
+  }
 });
 
 // New version on GitHub: a note once a day, with a link to download it.

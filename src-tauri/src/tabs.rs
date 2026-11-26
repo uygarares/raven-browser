@@ -130,8 +130,8 @@ struct TabList {
     info: HashMap<u32, TabInfo>,
     next_id: u32,
     next_group: u32,
-    /// Addresses of recently closed tabs, newest last (for Ctrl+Shift+T).
-    closed: Vec<String>,
+    /// Recently closed tabs (address, title), newest last (for Ctrl+Shift+T).
+    closed: Vec<(String, String)>,
 }
 
 impl TabList {
@@ -630,6 +630,7 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                 if let Some(script) = crate::shield::cosmetic_script(&on_load, &url) {
                     let _ = webview.eval(script);
                 }
+                offer_translation(&on_load, webview, id, &url);
             }
             if !is_new_tab_url(&url) && !loading && !private {
                 // The title usually arrives before the page finishes loading.
@@ -1034,7 +1035,7 @@ pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
     let result = with_tabs(app, |list| {
         let info = list.info.remove(&id)?;
         if !info.private {
-            list.closed.push(info.url.clone());
+            list.closed.push((info.url.clone(), info.title.clone()));
             if list.closed.len() > MAX_CLOSED {
                 list.closed.remove(0);
             }
@@ -1087,12 +1088,67 @@ pub fn close_active(app: &AppHandle, window: &str) -> Result<(), String> {
     }
 }
 
+/// A page in another language: the toolbar offers to translate it (Chrome does
+/// the same). The page's language comes from its <html lang>.
+fn offer_translation(app: &AppHandle, webview: Webview, id: u32, url: &str) {
+    if !app.state::<settings::SettingsState>().0.lock().unwrap().offer_translate {
+        return;
+    }
+    let host = tauri::Url::parse(url).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_default();
+    if host.is_empty() || host.contains("translate.goog") || host.contains("translate.google") {
+        return;
+    }
+    let app = app.clone();
+    let url = url.to_string();
+    std::thread::spawn(move || {
+        let script = r#"(document.documentElement.lang || document.querySelector("meta[http-equiv='content-language' i]")?.content || "").trim().slice(0, 2).toLowerCase()"#;
+        let Ok(json) = crate::native::run_script(&webview, script) else { return };
+        let lang: String = serde_json::from_str(&json).unwrap_or_default();
+        if lang.len() != 2 || lang == "tr" {
+            return;
+        }
+        if let Some(window) = window_of_tab(&app, id) {
+            let _ = app.emit("offer-translate", serde_json::json!({ "window": window, "tab": id, "url": url, "host": host, "lang": lang }));
+        }
+    });
+}
+
 /// Opens the most recently closed tab again.
 pub fn reopen_closed(app: &AppHandle, window: &str) -> Result<(), String> {
     match with_tabs(app, |list| list.closed.pop()) {
-        Some(url) => open_tab(app, window, if url.is_empty() { NEW_TAB } else { &url }).map(|_| ()),
+        Some((url, _)) => open_tab(app, window, if url.is_empty() { NEW_TAB } else { &url }).map(|_| ()),
         None => Ok(()),
     }
+}
+
+#[derive(Serialize)]
+pub struct ClosedTab {
+    url: String,
+    title: String,
+}
+
+/// Recently closed tabs, newest first (the history page shows them).
+#[tauri::command]
+pub async fn get_closed_tabs(app: AppHandle) -> Vec<ClosedTab> {
+    with_tabs(&app, |list| {
+        list.closed
+            .iter()
+            .rev()
+            .filter(|(url, _)| !url.is_empty())
+            .map(|(url, title)| ClosedTab { url: url.clone(), title: title.clone() })
+            .collect()
+    })
+}
+
+/// Opens a recently closed tab again and takes it off the list.
+#[tauri::command]
+pub async fn reopen_closed_tab(app: AppHandle, webview: Webview, url: String) -> Result<(), String> {
+    with_tabs(&app, |list| {
+        if let Some(index) = list.closed.iter().rposition(|(u, _)| *u == url) {
+            list.closed.remove(index);
+        }
+    });
+    open_tab(&app, &windows::window_of(&webview), &url).map(|_| ())
 }
 
 /// Moves to the next (+1) or previous (-1) tab of a window, wrapping around.

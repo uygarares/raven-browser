@@ -52,6 +52,8 @@ pub struct Settings {
     pub game_mode: bool,
     /// Raven Shield blocks ads and trackers.
     pub shield: bool,
+    /// Offer to translate pages in other languages to Turkish.
+    pub offer_translate: bool,
     /// The shield also hides "we use cookies" banners.
     pub hide_cookie_banners: bool,
     /// Videos start only after you click (muted autoplay still allowed).
@@ -124,6 +126,7 @@ impl Default for Settings {
             game_mode: true,
             shield: true,
             hide_cookie_banners: true,
+            offer_translate: true,
             block_autoplay: false,
             https_upgrade: true,
             vertical_tabs: false,
