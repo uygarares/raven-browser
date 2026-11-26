@@ -703,6 +703,7 @@ async function openPanel(name) {
     item.button?.setAttribute("aria-pressed", String(other === name));
   }
   openPanelName = name;
+  document.body.classList.add("panel-open");
   if (!wasOpen) await run("set_full_window_command", { open: true });
   await panel.load();
   if (panel.focus) panel.focus.focus();
@@ -715,6 +716,7 @@ function closePanel() {
     item.button?.setAttribute("aria-pressed", "false");
   }
   openPanelName = null;
+  document.body.classList.remove("panel-open");
   run("set_full_window_command", { open: false });
 }
 

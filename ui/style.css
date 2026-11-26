@@ -465,6 +465,7 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
   font-weight: 700;
 }
 
+body.panel-open .ai-header { display: none; }
 body.fullscreen .tab-row, body.fullscreen .nav-row, body.fullscreen .bookmarks-bar { visibility: hidden; }
 
 /* Private window: deeper violet ink. */

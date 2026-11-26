@@ -633,9 +633,8 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     crate::native::watch_fullscreen(app, &webview, page_fullscreen);
     crate::shield::attach(app, &webview, id);
     windows::tab_created(app, &window_label);
-    if windows::is_full_window(app, &window_label) {
-        windows::layout(app, &window_label);
-    }
+    // Place it as the page card (margins, rounded corners, AI panel, panels open).
+    windows::layout(app, &window_label);
     Ok(webview)
 }
 

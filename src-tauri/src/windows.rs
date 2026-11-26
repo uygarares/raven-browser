@@ -26,9 +26,9 @@ const BOOKMARKS_BAR: f64 = 32.0;
 
 /// Raven's dark background (the Solid theme's page color). Shown for a moment
 /// before a page draws itself, instead of a white flash.
-pub const BACKGROUND: tauri::window::Color = tauri::window::Color(17, 19, 23, 255);
+pub const BACKGROUND: tauri::window::Color = tauri::window::Color(17, 16, 32, 255);
 /// The popup menus' color (--menu in ui/theme.css).
-const MENU_BACKGROUND: tauri::window::Color = tauri::window::Color(29, 32, 39, 255);
+const MENU_BACKGROUND: tauri::window::Color = tauri::window::Color(25, 24, 47, 255);
 
 static SHOW_BOOKMARKS_BAR: AtomicBool = AtomicBool::new(false);
 static NEXT_WINDOW: AtomicU32 = AtomicU32::new(1);
@@ -514,4 +514,24 @@ pub async fn get_popup_request(app: AppHandle, webview: Webview) -> Option<Popup
 #[tauri::command]
 pub async fn get_bookmarks_bar() -> bool {
     bookmarks_bar_shown()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_card_layout() {
+        let (page, panel) = page_layout((1280.0, 800.0), 84.0, false, false);
+        assert_eq!(page, Rect { x: 8.0, y: 84.0, width: 1264.0, height: 708.0 });
+        assert!(panel.is_none());
+        let (page, panel) = page_layout((1280.0, 800.0), 84.0, true, false);
+        let panel = panel.unwrap();
+        assert_eq!(page.width + panel.width + 3.0 * PAGE_MARGIN, 1280.0);
+        assert_eq!(panel.x + panel.width, 1272.0);
+        // Too narrow for the panel: the page keeps the space.
+        assert!(page_layout((600.0, 800.0), 84.0, true, false).1.is_none());
+        let (page, _) = page_layout((1280.0, 800.0), 84.0, true, true);
+        assert_eq!(page, Rect { x: 0.0, y: 0.0, width: 1280.0, height: 800.0 });
+    }
 }
