@@ -12,6 +12,10 @@ use tauri::{
 use crate::TOOLBAR_HEIGHT;
 
 pub const HOME_URL: &str = "https://www.google.com";
+/// Opens Raven's own new tab page (ui/newtab.html).
+pub const NEW_TAB: &str = "raven:newtab";
+const NEW_TAB_PAGE: &str = "newtab.html";
+const WHITE: tauri::window::Color = tauri::window::Color(255, 255, 255, 255);
 const SEARCH_URL: &str = "https://www.google.com/search";
 const NEW_TAB_TITLE: &str = "Yeni sekme";
 
@@ -43,6 +47,26 @@ pub struct Tabs(Mutex<TabList>);
 pub struct TabsState {
     tabs: Vec<TabInfo>,
     active: Option<u32>,
+}
+
+/// True for Raven's new tab page, whichever way the address is written.
+pub fn is_new_tab_url(url: &str) -> bool {
+    url == NEW_TAB
+        || url.is_empty()
+        || ((url.starts_with("tauri://localhost/")
+            || url.starts_with("http://tauri.localhost/")
+            || url.starts_with("https://tauri.localhost/"))
+            && url.contains(NEW_TAB_PAGE))
+}
+
+/// Websites get the usual white page background. Raven's new tab page is
+/// see-through so the glass theme can show the desktop.
+fn background_for(url: &str) -> tauri::window::Color {
+    if is_new_tab_url(url) {
+        crate::CLEAR
+    } else {
+        WHITE
+    }
 }
 
 fn label(id: u32) -> String {
@@ -104,14 +128,20 @@ pub fn to_url(input: &str) -> Result<Url, String> {
 
 /// Opens a new tab. Must not be called from a webview event handler (use a spawned task).
 pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u32> {
-    let url: Url = url.parse().map_err(|_| tauri::Error::InvalidWebviewUrl("bad url"))?;
+    let new_tab = is_new_tab_url(url);
+    let target = if new_tab {
+        WebviewUrl::App(NEW_TAB_PAGE.into())
+    } else {
+        WebviewUrl::External(url.parse().map_err(|_| tauri::Error::InvalidWebviewUrl("bad url"))?)
+    };
+    let shown_url = if new_tab { String::new() } else { url.to_string() };
     let id = with_tabs(app, |list| {
         list.next_id += 1;
         let id = list.next_id;
         list.order.push(id);
         list.info.insert(
             id,
-            TabInfo { id, title: NEW_TAB_TITLE.into(), url: url.to_string(), loading: true },
+            TabInfo { id, title: NEW_TAB_TITLE.into(), url: shown_url, loading: true },
         );
         id
     });
@@ -123,11 +153,19 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
     let on_load = app.clone();
     let on_title = app.clone();
     let on_popup = app.clone();
-    let builder = WebviewBuilder::new(label(id), WebviewUrl::External(url))
-        .background_color(crate::BACKGROUND)
-        .on_page_load(move |_webview, payload| {
+    let builder = WebviewBuilder::new(label(id), target)
+        .transparent(true)
+        .background_color(background_for(if new_tab { NEW_TAB } else { url }))
+        .on_page_load(move |webview, payload| {
             let loading = matches!(payload.event(), PageLoadEvent::Started);
-            let url = payload.url().to_string();
+            let mut url = payload.url().to_string();
+            if loading {
+                let _ = webview.set_background_color(Some(background_for(&url)));
+            }
+            if is_new_tab_url(&url) {
+                // The address bar stays empty on the new tab page, like other browsers.
+                url = String::new();
+            }
             update_tab(&on_load, id, |tab| {
                 tab.url = url;
                 tab.loading = loading;
@@ -165,21 +203,51 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
     Ok(id)
 }
 
-/// Shows one tab and hides the others.
+/// Shows one tab and hides the others. The new tab is shown before the others
+/// are hidden, so nothing flashes in between.
 fn show_only(app: &AppHandle, id: u32) {
     with_tabs(app, |list| list.active = Some(id));
     let target = label(id);
-    for (name, webview) in app.webviews() {
-        if !is_tab_label(&name) {
-            continue;
-        }
-        if name == target {
+    let webviews = app.webviews();
+    if !crate::is_full_window() {
+        if let Some(webview) = webviews.get(&target) {
             let _ = webview.show();
-        } else {
+        }
+    }
+    for (name, webview) in webviews {
+        if is_tab_label(&name) && name != target {
             let _ = webview.hide();
         }
     }
     publish(app);
+}
+
+/// Hides every tab, while a full-window screen is open.
+pub fn hide_all(app: &AppHandle) {
+    for (name, webview) in app.webviews() {
+        if is_tab_label(&name) {
+            let _ = webview.hide();
+        }
+    }
+}
+
+/// Shows the active tab again.
+pub fn show_active(app: &AppHandle) {
+    if let Some(id) = with_tabs(app, |list| list.active) {
+        show_only(app, id);
+    }
+}
+
+/// Reloads every open new tab page, for example after the theme changed.
+pub fn reload_new_tab_pages(app: &AppHandle) {
+    let ids: Vec<u32> = with_tabs(app, |list| {
+        list.info.values().filter(|tab| tab.url.is_empty()).map(|tab| tab.id).collect()
+    });
+    for id in ids {
+        if let Some(webview) = app.get_webview(&label(id)) {
+            let _ = webview.eval("location.reload()");
+        }
+    }
 }
 
 fn active_tab(app: &AppHandle) -> Result<Webview, String> {
@@ -245,7 +313,7 @@ pub fn close_active(app: &AppHandle) -> Result<(), String> {
 /// Opens the most recently closed tab again.
 pub fn reopen_closed(app: &AppHandle) -> Result<(), String> {
     match with_tabs(app, |list| list.closed.pop()) {
-        Some(url) => open_tab(app, &url).map(|_| ()),
+        Some(url) => open_tab(app, if url.is_empty() { NEW_TAB } else { &url }).map(|_| ()),
         None => Ok(()),
     }
 }
@@ -294,7 +362,7 @@ pub async fn get_tabs(app: AppHandle) -> TabsState {
 
 #[tauri::command]
 pub async fn new_tab(app: AppHandle) -> Result<u32, String> {
-    open_tab(&app, HOME_URL)
+    open_tab(&app, NEW_TAB)
 }
 
 #[tauri::command]
@@ -356,5 +424,19 @@ mod tests {
     #[test]
     fn empty_goes_home() {
         assert_eq!(to_url("  ").unwrap().as_str(), "https://www.google.com/");
+    }
+}
+
+#[cfg(test)]
+mod new_tab_tests {
+    use super::is_new_tab_url;
+
+    #[test]
+    fn recognizes_the_new_tab_page() {
+        assert!(is_new_tab_url("raven:newtab"));
+        assert!(is_new_tab_url("http://tauri.localhost/newtab.html"));
+        assert!(is_new_tab_url("tauri://localhost/newtab.html"));
+        assert!(!is_new_tab_url("https://example.com/newtab.html"));
+        assert!(!is_new_tab_url("https://www.google.com/"));
     }
 }

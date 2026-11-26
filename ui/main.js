@@ -1,4 +1,4 @@
-// Raven toolbar: tabs, navigation and window buttons.
+// Raven toolbar: tabs, navigation, window buttons and the theme picker.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const appWindow = window.__TAURI__.window.getCurrentWindow();
@@ -38,16 +38,36 @@ function closeTab(id) {
   run("close_tab", { id });
 }
 
+const SEARCH_ICON =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+
+function siteLetter(tab) {
+  try {
+    const host = new URL(tab.url).hostname.replace(/^www\./, "");
+    return host.charAt(0).toUpperCase();
+  } catch {
+    return (tab.title || "?").charAt(0).toUpperCase();
+  }
+}
+
 function render() {
   tabsEl.replaceChildren(
     ...state.tabs.map((tab) => {
       const el = template.content.firstElementChild.cloneNode(true);
       const isActive = tab.id === state.active;
+      const isNewTabPage = tab.url === "";
       el.classList.toggle("active", isActive);
-      el.classList.toggle("loading", tab.loading);
+      el.classList.toggle("loading", tab.loading && !isNewTabPage);
+      el.classList.toggle("new-tab-page", isNewTabPage);
       el.setAttribute("aria-selected", String(isActive));
       el.title = tab.title;
       el.querySelector(".tab-title").textContent = tab.title;
+      const icon = el.querySelector(".tab-icon");
+      if (isNewTabPage) {
+        icon.innerHTML = SEARCH_ICON;
+      } else if (!tab.loading) {
+        icon.textContent = siteLetter(tab);
+      }
       el.addEventListener("mousedown", (event) => {
         // Middle click closes the tab, like other browsers.
         if (event.button === 1) {
@@ -67,7 +87,7 @@ function render() {
     if (document.activeElement !== address) {
       address.value = active.url;
     }
-    loading.classList.toggle("on", active.loading);
+    loading.classList.toggle("on", active.loading && active.url !== "");
   }
 }
 
@@ -79,6 +99,97 @@ listen("tabs", ({ payload }) => {
 invoke("get_tabs").then((payload) => {
   state = payload;
   render();
+});
+
+// Themes
+
+const root = document.documentElement;
+let settings = null;
+let draft = null;
+
+function applyTheme(theme, glassTint) {
+  root.dataset.theme = theme;
+  root.style.setProperty("--tint", String(glassTint));
+}
+
+/// Keeps a copy for the new tab page, which reads it when it loads.
+function rememberTheme(value) {
+  try {
+    localStorage.setItem("raven-theme", JSON.stringify({ theme: value.theme, glassTint: value.glassTint }));
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+const choices = document.querySelectorAll("[data-theme-choice]");
+const tintControl = document.getElementById("tint-control");
+const tint = document.getElementById("tint");
+const tintValue = document.getElementById("tint-value");
+const pickerDone = document.getElementById("picker-done");
+
+function showDraft() {
+  choices.forEach((choice) => {
+    choice.setAttribute("aria-pressed", String(choice.dataset.themeChoice === draft.theme));
+  });
+  tintControl.hidden = draft.theme !== "glass";
+  tint.value = String(Math.round(draft.glassTint * 100));
+  tintValue.textContent = `${tint.value}%`;
+  // Preview right away: the picker itself is drawn in the chosen theme.
+  applyTheme(draft.theme, draft.glassTint);
+}
+
+async function openPicker() {
+  draft = { ...settings };
+  pickerDone.textContent = settings.onboarded ? "Kaydet" : "Başla";
+  showDraft();
+  document.body.classList.add("full-window");
+  await run("set_full_window", { open: true });
+}
+
+async function closePicker() {
+  document.body.classList.remove("full-window");
+  await run("set_full_window", { open: false });
+}
+
+choices.forEach((choice) => {
+  choice.addEventListener("click", () => {
+    draft.theme = choice.dataset.themeChoice;
+    showDraft();
+  });
+});
+
+tint.addEventListener("input", () => {
+  draft.glassTint = Number(tint.value) / 100;
+  showDraft();
+});
+
+pickerDone.addEventListener("click", async () => {
+  const saved = await run("save_settings", { settings: { ...draft, onboarded: true } });
+  if (saved) settings = saved;
+  closePicker();
+});
+
+document.getElementById("appearance").addEventListener("click", openPicker);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.body.classList.contains("full-window") && settings.onboarded) {
+    applyTheme(settings.theme, settings.glassTint);
+    closePicker();
+  }
+});
+
+listen("settings", ({ payload }) => {
+  settings = payload;
+  applyTheme(settings.theme, settings.glassTint);
+  rememberTheme(settings);
+});
+
+invoke("get_settings").then((saved) => {
+  settings = saved;
+  applyTheme(settings.theme, settings.glassTint);
+  rememberTheme(settings);
+  // First launch: let the user pick a theme before anything else.
+  if (!settings.onboarded) openPicker();
 });
 
 // Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
@@ -99,6 +210,7 @@ function actionFor(event) {
 }
 
 document.addEventListener("keydown", (event) => {
+  if (document.body.classList.contains("full-window")) return;
   const action = actionFor(event);
   if (!action) return;
   event.preventDefault();

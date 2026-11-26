@@ -22,6 +22,12 @@ than Chrome. For Windows and Android.
 
 Rust, Tauri and WebView2 on Windows, Android WebView on Android.
 
+## Design
+
+Raven's look follows [unslop](https://github.com/heydamir/unslop) by Damir
+Sokolovsky (CC BY 4.0): quiet surfaces, one accent from the Raven logo.
+It ships with two themes, Solid and Glass, and a glass darkness slider.
+
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).

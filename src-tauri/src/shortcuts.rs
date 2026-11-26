@@ -58,7 +58,7 @@ pub fn perform(app: &AppHandle, action: Action) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let result = match action {
-            Action::NewTab => tabs::open_tab(&app, tabs::HOME_URL).map(|_| focus_address(&app)),
+            Action::NewTab => tabs::open_tab(&app, tabs::NEW_TAB).map(|_| focus_address(&app)),
             Action::CloseTab => tabs::close_active(&app),
             Action::ReopenTab => tabs::reopen_closed(&app),
             Action::FocusAddress => {
