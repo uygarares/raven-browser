@@ -114,6 +114,17 @@ pub fn watch_failures(webview: &Webview, on_failed: impl Fn(String, &'static str
     imp::watch_failures(webview, on_failed);
 }
 
+/// Follows the downloads a tab starts: `on_progress(url, received, total)`
+/// about four times a second (total is 0 when the site does not say).
+pub fn watch_downloads(webview: &Webview, on_progress: impl Fn(String, i64, i64) + Send + Sync + 'static) {
+    imp::watch_downloads(webview, std::sync::Arc::new(on_progress));
+}
+
+/// Stops a running download. Safe to call from any thread.
+pub fn cancel_download(app: &tauri::AppHandle, url: String) {
+    let _ = app.run_on_main_thread(move || imp::cancel_download(&url));
+}
+
 /// What to delete with `clear_data`.
 #[derive(Clone, Copy, Default, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -292,6 +303,69 @@ mod imp {
             let mut token = 0i64;
             let _ = core.add_WebResourceRequested(&handler, &mut token);
         });
+    }
+
+    thread_local! {
+        /// Running downloads (address, operation), only touched on the main thread.
+        static DOWNLOADS: std::cell::RefCell<Vec<(String, ICoreWebView2DownloadOperation)>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    pub fn watch_downloads(webview: &Webview, on_progress: std::sync::Arc<dyn Fn(String, i64, i64) + Send + Sync>) {
+        use webview2_com::{BytesReceivedChangedEventHandler, DownloadStartingEventHandler, StateChangedEventHandler};
+        let _ = webview.with_webview(move |platform| unsafe {
+            let Ok(core) = platform.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_4>()) else { return };
+            let handler = DownloadStartingEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                unsafe {
+                    let operation = args.DownloadOperation()?;
+                    let mut uri = PWSTR::null();
+                    operation.Uri(&mut uri)?;
+                    let uri = CoTaskMemPWSTR::from(uri).to_string();
+                    DOWNLOADS.with(|list| list.borrow_mut().push((uri.clone(), operation.clone())));
+                    let progress = on_progress.clone();
+                    let address = uri.clone();
+                    let last = std::cell::Cell::new(None::<std::time::Instant>);
+                    let bytes = BytesReceivedChangedEventHandler::create(Box::new(move |operation, _| {
+                        let Some(operation) = operation else { return Ok(()) };
+                        if last.get().is_some_and(|t| t.elapsed().as_millis() < 250) {
+                            return Ok(());
+                        }
+                        last.set(Some(std::time::Instant::now()));
+                        let (mut received, mut total) = (0i64, 0i64);
+                        unsafe {
+                            operation.BytesReceived(&mut received)?;
+                            let _ = operation.TotalBytesToReceive(&mut total);
+                        }
+                        progress(address.clone(), received, total.max(0));
+                        Ok(())
+                    }));
+                    let mut token = 0i64;
+                    operation.add_BytesReceivedChanged(&bytes, &mut token)?;
+                    let state = StateChangedEventHandler::create(Box::new(move |operation, _| {
+                        let Some(operation) = operation else { return Ok(()) };
+                        let mut state = COREWEBVIEW2_DOWNLOAD_STATE::default();
+                        unsafe { operation.State(&mut state)? };
+                        if state != COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS {
+                            DOWNLOADS.with(|list| list.borrow_mut().retain(|(_, op)| *op != operation));
+                        }
+                        Ok(())
+                    }));
+                    operation.add_StateChanged(&state, &mut token)?;
+                }
+                Ok(())
+            }));
+            let mut token = 0i64;
+            let _ = core.add_DownloadStarting(&handler, &mut token);
+        });
+    }
+
+    pub fn cancel_download(url: &str) {
+        let operation = DOWNLOADS.with(|list| list.borrow().iter().rev().find(|(u, _)| u == url).map(|(_, op)| op.clone()));
+        if let Some(operation) = operation {
+            unsafe {
+                let _ = operation.Cancel();
+            }
+        }
     }
 
     pub fn clear_data(webview: &Webview, kinds: super::ClearKinds, since: f64, tx: Sender<Result<(), String>>) -> Result<(), String> {
@@ -661,6 +735,8 @@ mod imp {
     }
     pub fn save_page(_webview: &Webview) {}
     pub fn run_as_user(_webview: &Webview, _script: String) {}
+    pub fn watch_downloads(_webview: &Webview, _on_progress: std::sync::Arc<dyn Fn(String, i64, i64) + Send + Sync>) {}
+    pub fn cancel_download(_url: &str) {}
     pub fn clear_data(_webview: &Webview, _kinds: super::ClearKinds, _since: f64, tx: Sender<Result<(), String>>) -> Result<(), String> {
         let _ = tx.send(Err("Only on Windows".into()));
         Ok(())

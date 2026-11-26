@@ -709,6 +709,10 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     crate::native::watch_fullscreen(app, &webview, page_fullscreen);
     crate::shield::attach(app, &webview, id);
     {
+        let app = app.clone();
+        crate::native::watch_downloads(&webview, move |url, received, total| downloads::progress(&app, &url, received, total));
+    }
+    {
         // A missing page (404) or a site that cannot be reached: the toolbar
         // offers the copy in the Internet Archive.
         let app = app.clone();

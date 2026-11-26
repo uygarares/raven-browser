@@ -908,8 +908,25 @@ function formatSize(bytes) {
   return `${value.toLocaleString("tr-TR", { maximumFractionDigits: digits })} ${units[unit]}`;
 }
 
+// Running downloads: id -> { received, total, speed (bytes a second), at }.
+const downloadProgress = new Map();
+
+function progressText(download) {
+  const p = downloadProgress.get(download.id);
+  if (!p || !p.received) return "İndiriliyor";
+  const parts = [p.total ? `${formatSize(p.received)} / ${formatSize(p.total)}` : formatSize(p.received)];
+  if (p.speed > 0) {
+    parts.push(`${formatSize(p.speed)}/sn`);
+    if (p.total > p.received) {
+      const seconds = Math.round((p.total - p.received) / p.speed);
+      parts.push(seconds < 60 ? `${seconds} sn kaldı` : `${Math.round(seconds / 60)} dk kaldı`);
+    }
+  }
+  return parts.join(" · ");
+}
+
 function statusOf(download) {
-  if (download.state === "in-progress") return "İndiriliyor";
+  if (download.state === "in-progress") return progressText(download);
   if (download.state === "failed") return "Başarısız";
   return formatSize(download.size) || "Tamamlandı";
 }
@@ -934,6 +951,7 @@ function renderDownloads() {
     ...[...downloads].reverse().map((download) => {
       const row = document.createElement("div");
       row.className = `download-row ${download.state}`;
+      row.dataset.id = download.id;
 
       const icon = document.createElement("span");
       icon.className = "download-icon";
@@ -949,9 +967,20 @@ function renderDownloads() {
       meta.className = "download-meta";
       meta.textContent = `${statusOf(download)} · ${hostOf(download.url)}`;
       text.append(name, meta);
+      if (download.state === "in-progress") {
+        const bar = document.createElement("div");
+        bar.className = "download-bar";
+        const p = downloadProgress.get(download.id);
+        bar.style.setProperty("--done", p?.total ? `${(p.received / p.total) * 100}%` : "0%");
+        bar.classList.toggle("unknown", !p?.total);
+        text.append(bar);
+      }
 
       const actions = document.createElement("div");
       actions.className = "download-actions";
+      if (download.state === "in-progress") {
+        actions.append(smallButton("İptal", () => run("cancel_download", { id: download.id })));
+      }
       if (download.state === "done") {
         actions.append(
           smallButton("Aç", () => run("open_download", { id: download.id })),
@@ -979,6 +1008,39 @@ async function loadDownloads() {
 }
 
 document.getElementById("downloads-clear").addEventListener("click", () => run("clear_downloads"));
+
+// Progress of a running download: the row and the toolbar button update in place.
+listen("download-progress", ({ payload }) => {
+  const before = downloadProgress.get(payload.id);
+  const now = performance.now();
+  let speed = before?.speed || 0;
+  if (before && now > before.at) {
+    const current = ((payload.received - before.received) * 1000) / (now - before.at);
+    speed = speed ? speed * 0.7 + current * 0.3 : current;
+  }
+  downloadProgress.set(payload.id, { received: payload.received, total: payload.total, speed, at: now });
+  const row = downloadsList.querySelector(`.download-row[data-id="${payload.id}"]`);
+  const download = downloads.find((d) => d.id === payload.id);
+  if (row && download) {
+    row.querySelector(".download-meta").textContent = `${progressText(download)} · ${hostOf(download.url)}`;
+    const bar = row.querySelector(".download-bar");
+    if (bar) {
+      bar.classList.toggle("unknown", !payload.total);
+      bar.style.setProperty("--done", payload.total ? `${(payload.received / payload.total) * 100}%` : "0%");
+    }
+  }
+  // The toolbar button fills like a ring (all running downloads together).
+  let received = 0;
+  let total = 0;
+  for (const d of downloads) {
+    const p = d.state === "in-progress" && downloadProgress.get(d.id);
+    if (p && p.total) {
+      received += p.received;
+      total += p.total;
+    }
+  }
+  downloadsButton.style.setProperty("--done", total ? `${Math.round((received / total) * 100)}%` : "0%");
+});
 
 listen("download-started", () => {
   downloadedThisSession = true;

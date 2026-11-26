@@ -144,6 +144,38 @@ fn path_of(app: &AppHandle, id: i64) -> Result<String, String> {
         .ok_or_else(|| "Download not found".into())
 }
 
+/// How far a running download is: sent to the toolbars as "download-progress".
+pub fn progress(app: &AppHandle, url: &str, received: i64, total: i64) {
+    let id = app
+        .state::<Downloads>()
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|d| d.url == url && d.state == State::InProgress)
+        .map(|d| d.id);
+    if let Some(id) = id {
+        let _ = app.emit("download-progress", serde_json::json!({ "id": id, "received": received, "total": total }));
+    }
+}
+
+/// Stops a running download.
+#[tauri::command]
+pub async fn cancel_download(app: AppHandle, id: i64) -> Result<(), String> {
+    let url = app
+        .state::<Downloads>()
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|d| d.id == id && d.state == State::InProgress)
+        .map(|d| d.url.clone())
+        .ok_or("Download not found")?;
+    crate::native::cancel_download(&app, url);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_downloads(app: AppHandle) -> Vec<Download> {
     app.state::<Downloads>().0.lock().unwrap().clone()
