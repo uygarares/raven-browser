@@ -42,6 +42,7 @@ const ICONS = {
   window: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>'),
   private: svg('<path d="M3 10h18"/><path d="M5 10l2-6h10l2 6"/><circle cx="8" cy="16" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 16h2"/>'),
   search: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>'),
+  trash: svg('<path d="M4 7h16"/><path d="M9 7V4.5h6V7"/><path d="M6.5 7l1 12.5h9l1-12.5"/><path d="M10 11v5M14 11v5"/>'),
   history: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>'),
   download: svg('<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>'),
   star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>'),
@@ -497,6 +498,7 @@ const COMMANDS = [
   ["command", "Sayfa kaynağını göster", "view-source", "Ctrl+U"],
   ["star", "Yer imlerine ekle / çıkar", "toggle-bookmark", "Ctrl+D"],
   ["history", "Geçmiş", "open-history", "Ctrl+H"],
+  ["trash", "Tarama verilerini sil", "clear-data", "Ctrl+Shift+Delete"],
   ["star", "Yer imleri", "open-bookmarks", "Ctrl+Shift+O"],
   ["star", "Yer imleri çubuğunu göster / gizle", "toggle-bookmarks-bar", "Ctrl+Shift+B"],
   ["download", "İndirmeler", "open-downloads", "Ctrl+J"],
@@ -757,6 +759,67 @@ function drawQr(data) {
   );
 }
 
+// "Tarama verilerini sil" (Ctrl+Shift+Delete), like Chrome's dialog.
+function drawClearData() {
+  const RANGES = [["Son 1 saat", 1], ["Son 24 saat", 24], ["Son 7 gün", 168], ["Tümü", 0]];
+  let hours = 1;
+  const ranges = el(
+    "div",
+    { class: "clear-ranges", role: "radiogroup", "aria-label": "Zaman aralığı" },
+    RANGES.map(([label, value]) => {
+      const button = el("button", { class: "clear-range", role: "radio", "aria-checked": String(value === hours), text: label });
+      button.addEventListener("click", () => {
+        hours = value;
+        ranges.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b === button)));
+      });
+      return button;
+    }),
+  );
+  const KINDS = [
+    ["history", "Geçmiş", "Ziyaret ettiğin sayfalar", true],
+    ["site", "Çerezler ve site verileri", "Çoğu siteden çıkış yaparsın", true],
+    ["cache", "Önbellekteki resim ve dosyalar", "Siteler sonraki açılışta biraz yavaş yüklenir", true],
+    ["passwords", "Kayıtlı şifreler", "", false],
+    ["autofill", "Form bilgileri", "Ad, adres, telefon", false],
+  ];
+  const checks = {};
+  const rows = KINDS.map(([key, name, note, on]) => {
+    const input = el("input", { type: "checkbox", role: "switch", class: "switch" });
+    input.checked = on;
+    checks[key] = input;
+    return el("label", { class: "clear-row" }, [
+      el("span", { class: "clear-text" }, [el("span", { class: "clear-name", text: name }), note ? el("span", { class: "clear-note", text: note }) : ""]),
+      input,
+    ]);
+  });
+  const status = el("span", { class: "clear-status" });
+  const go = el("button", { class: "clear-go", text: "Verileri sil" });
+  go.addEventListener("click", async () => {
+    go.disabled = true;
+    go.textContent = "Siliniyor…";
+    try {
+      await window.__TAURI__.core.invoke("clear_data", {
+        history: checks.history.checked,
+        kinds: { site: checks.site.checked, cache: checks.cache.checked, passwords: checks.passwords.checked, autofill: checks.autofill.checked },
+        hours,
+      });
+      go.textContent = "Silindi";
+      setTimeout(close, 900);
+    } catch (error) {
+      status.textContent = String(error).slice(0, 80);
+      go.disabled = false;
+      go.textContent = "Verileri sil";
+    }
+  });
+  root.className = "popup clear-data";
+  root.replaceChildren(
+    el("div", { class: "box-head", html: ICONS.trash || ICONS.history }, [el("span", { class: "label", text: "Tarama verilerini sil" })]),
+    ranges,
+    ...rows,
+    el("div", { class: "clear-foot" }, [status, go]),
+  );
+}
+
 function drawToast(data) {
   root.className = "popup toast";
   const parts = [el("span", { class: "label", text: data.text })];
@@ -773,6 +836,7 @@ function drawToast(data) {
 
 const DRAW = {
   qr: drawQr,
+  "clear-data": drawClearData,
   "bookmark-menu": drawBookmarkMenu,
   media: drawMedia,
   "group-menu": drawGroupMenu,

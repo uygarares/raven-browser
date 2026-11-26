@@ -64,6 +64,8 @@ pub enum Action {
     SleepOtherTabs,
     /// The video of the page in a floating window.
     PictureInPicture,
+    /// Ctrl+Shift+Delete: choose what browsing data to delete.
+    ClearData,
 }
 
 /// Matches a key press to an action, like Chrome: Ctrl+T, Ctrl+N, Ctrl+Shift+N,
@@ -106,6 +108,7 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
         (0x30, false) | (0x60, false) => Action::ZoomReset, // 0 and numpad 0
         (0x44, false) => Action::ToggleBookmark, // D
         (0x42, true) => Action::ToggleBookmarksBar, // Shift+B
+        (0x2E, true) => Action::ClearData,    // Shift+Delete
         _ => return None,
     };
     Some(action)
@@ -207,6 +210,10 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
                 .ok_or_else(|| "No page".to_string())
                 .and_then(|tab| tab.print().map_err(|e| e.to_string())),
             Action::ReaderMode => crate::reader::toggle(&app, window),
+            Action::ClearData => {
+                tell_toolbar(&app, window, "open-clear-data");
+                Ok(())
+            }
             Action::PictureInPicture => {
                 if let Some(tab) = tabs::active_webview(&app, window) {
                     crate::native::run_as_user(&tab, tabs::PIP_SCRIPT);

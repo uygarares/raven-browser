@@ -230,6 +230,37 @@ pub async fn get_search_engines() -> Vec<Engine> {
     SEARCH_ENGINES.iter().map(|(id, name, url)| Engine { id, name, url }).collect()
 }
 
+/// "Tarama verilerini sil" (Ctrl+Shift+Delete): what, and since how many hours (0 = all).
+#[tauri::command]
+pub async fn clear_data(app: AppHandle, history: bool, kinds: crate::native::ClearKinds, hours: u32) -> Result<(), String> {
+    let now = crate::tabs::now_secs();
+    let since = if hours == 0 { 0 } else { now.saturating_sub(hours as u64 * 3600) };
+    if history {
+        crate::history::clear_since(&app, since as i64 * 1000);
+    }
+    let webview = normal_webview(&app)?;
+    tauri::async_runtime::spawn_blocking(move || crate::native::clear_data(&webview, kinds, since as f64))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// A webview of a normal (not private) window: they all share the same browsing data.
+fn normal_webview(app: &AppHandle) -> Result<tauri::Webview, String> {
+    let normal = |label: &str| {
+        let window = match label.strip_prefix("tab-") {
+            Some(id) => id.parse().ok().and_then(|id| crate::tabs::window_of_tab(app, id)),
+            None => label.strip_prefix("ui-").map(String::from),
+        };
+        window.is_some_and(|w| !crate::windows::is_private(app, &w))
+    };
+    app.webviews()
+        .into_iter()
+        .find(|(label, _)| label.starts_with("tab-") && normal(label))
+        .or_else(|| app.webviews().into_iter().find(|(label, _)| label.starts_with("ui-") && normal(label)))
+        .map(|(_, webview)| webview)
+        .ok_or_else(|| "No webview".to_string())
+}
+
 /// Deletes cookies, cache and site data (you get signed out of websites).
 #[tauri::command]
 pub async fn clear_browsing_data(app: AppHandle) -> Result<(), String> {

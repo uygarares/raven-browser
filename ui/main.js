@@ -837,6 +837,11 @@ listenHere("open-history", () => openPanel("history"));
 listenHere("open-downloads", () => openPanel("downloads"));
 listenHere("open-settings", () => openPanel("settings"));
 listenHere("open-archive", () => openPanel("archive"));
+function openClearData() {
+  const width = 400;
+  openPopup("clear-data", {}, { x: (window.innerWidth - width) / 2, y: 90, width, height: 400 });
+}
+listenHere("open-clear-data", openClearData);
 listenHere("open-extensions", (payload) => {
   openPanel("extensions");
   if (payload.install) askToInstall(payload.install);
@@ -1371,8 +1376,7 @@ function confirmButton(button, action) {
   });
 }
 
-confirmButton(document.getElementById("settings-clear-history"), () => run("clear_history"));
-confirmButton(document.getElementById("settings-clear-data"), () => run("clear_browsing_data"));
+document.getElementById("settings-clear-data").addEventListener("click", openClearData);
 document.getElementById("settings-github").addEventListener("click", () => {
   closePanel();
   run("open_url", { url: "https://github.com/uygarares/raven-browser", newTab: true });
@@ -1908,6 +1912,7 @@ function actionFor(event) {
   if (key === "-" || key === "_") return "zoom-out";
   if (key === "0" && !shift) return "zoom-reset";
   if (shift) {
+    if (key === "delete") return "clear-data";
     if (key === "tab") return "previous-tab";
     if (key === "b") return "toggle-bookmarks-bar";
     if (key === "o") return "open-bookmarks";

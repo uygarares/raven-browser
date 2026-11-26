@@ -78,6 +78,7 @@ pub fn run() {
             settings::save_settings,
             settings::get_search_engines,
             settings::clear_browsing_data,
+            settings::clear_data,
             bookmarks::get_bookmarks,
             bookmarks::toggle_bookmark,
             bookmarks::remove_bookmark,

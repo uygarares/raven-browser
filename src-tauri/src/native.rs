@@ -114,6 +114,25 @@ pub fn watch_failures(webview: &Webview, on_failed: impl Fn(String, &'static str
     imp::watch_failures(webview, on_failed);
 }
 
+/// What to delete with `clear_data`.
+#[derive(Clone, Copy, Default, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ClearKinds {
+    /// Cookies and everything sites keep (you get signed out).
+    pub site: bool,
+    pub cache: bool,
+    pub passwords: bool,
+    pub autofill: bool,
+}
+
+/// Deletes browsing data saved since `since` (seconds since 1970; 0 = all).
+/// Call it off the main thread.
+pub fn clear_data(webview: &Webview, kinds: ClearKinds, since: f64) -> Result<(), String> {
+    let (tx, rx) = mpsc::channel();
+    imp::clear_data(webview, kinds, since, tx)?;
+    rx.recv_timeout(Duration::from_secs(60)).map_err(|_| "No answer".to_string())?
+}
+
 /// Measures memory (Windows). Call it off the main thread.
 pub fn memory(webview: &Webview) -> Result<Memory, String> {
     let (tx, rx) = mpsc::channel();
@@ -273,6 +292,57 @@ mod imp {
             let mut token = 0i64;
             let _ = core.add_WebResourceRequested(&handler, &mut token);
         });
+    }
+
+    pub fn clear_data(webview: &Webview, kinds: super::ClearKinds, since: f64, tx: Sender<Result<(), String>>) -> Result<(), String> {
+        use webview2_com::ClearBrowsingDataCompletedHandler;
+        let mut bits = 0i32;
+        if kinds.site {
+            bits |= COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE.0;
+        }
+        if kinds.cache {
+            bits |= COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE.0;
+        }
+        if kinds.passwords {
+            bits |= COREWEBVIEW2_BROWSING_DATA_KINDS_PASSWORD_AUTOSAVE.0;
+        }
+        if kinds.autofill {
+            bits |= COREWEBVIEW2_BROWSING_DATA_KINDS_GENERAL_AUTOFILL.0;
+        }
+        if bits == 0 {
+            let _ = tx.send(Ok(()));
+            return Ok(());
+        }
+        webview
+            .with_webview(move |platform| unsafe {
+                let profile = platform
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.cast::<ICoreWebView2_13>())
+                    .and_then(|core| core.Profile())
+                    .and_then(|profile| profile.cast::<ICoreWebView2Profile2>());
+                let profile = match profile {
+                    Ok(profile) => profile,
+                    Err(error) => {
+                        let _ = tx.send(Err(error.to_string()));
+                        return;
+                    }
+                };
+                let reply = tx.clone();
+                let handler = ClearBrowsingDataCompletedHandler::create(Box::new(move |result| {
+                    let _ = reply.send(result.map_err(|e| e.to_string()));
+                    Ok(())
+                }));
+                let end = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0)
+                    + 60.0;
+                if let Err(error) = profile.ClearBrowsingDataInTimeRange(COREWEBVIEW2_BROWSING_DATA_KINDS(bits), since, end, &handler) {
+                    let _ = tx.send(Err(error.to_string()));
+                }
+            })
+            .map_err(|e| e.to_string())
     }
 
     pub fn run_as_user(webview: &Webview, script: String) {
@@ -591,6 +661,10 @@ mod imp {
     }
     pub fn save_page(_webview: &Webview) {}
     pub fn run_as_user(_webview: &Webview, _script: String) {}
+    pub fn clear_data(_webview: &Webview, _kinds: super::ClearKinds, _since: f64, tx: Sender<Result<(), String>>) -> Result<(), String> {
+        let _ = tx.send(Err("Only on Windows".into()));
+        Ok(())
+    }
     pub fn watch_failures(_webview: &Webview, _on_failed: impl Fn(String, &'static str) + Send + 'static) {}
     pub fn site_cookies(_webview: &Webview, _url: String, _delete: bool, tx: Sender<Result<usize, String>>) -> Result<(), String> {
         let _ = tx.send(Err("Only on Windows".into()));

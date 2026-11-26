@@ -234,6 +234,14 @@ pub async fn clear_history(app: AppHandle) {
     clear_now(&app);
 }
 
+/// Forgets the visits since `since` (milliseconds since 1970).
+pub fn clear_since(app: &AppHandle, since: i64) {
+    let history = app.state::<History>();
+    history.entries.lock().unwrap().retain(|entry| entry.time < since);
+    history.dirty.store(true, Ordering::SeqCst);
+    flush(app);
+}
+
 pub fn clear_now(app: &AppHandle) {
     let history = app.state::<History>();
     history.entries.lock().unwrap().clear();
