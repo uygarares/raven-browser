@@ -118,7 +118,22 @@ pub fn zip_part(bytes: &[u8]) -> Result<&[u8], String> {
 }
 
 fn download(store_id: &str) -> Result<Vec<u8>, String> {
-    let response = ureq::get(&download_url(store_id))
+    response_of(&download_url(store_id))
+}
+
+/// The bytes at an address (up to 200 MB), over the system's TLS.
+pub fn fetch(url: &str) -> Result<Vec<u8>, String> {
+    response_of(url)
+}
+
+fn response_of(url: &str) -> Result<Vec<u8>, String> {
+    let tls = native_tls::TlsConnector::new().map_err(|e| e.to_string())?;
+    let agent = ureq::AgentBuilder::new()
+        .tls_connector(std::sync::Arc::new(tls))
+        .timeout(std::time::Duration::from_secs(60))
+        .build();
+    let response = agent
+        .get(url)
         .call()
         .map_err(|e| format!("İndirilemedi: {e}"))?;
     let mut bytes = Vec::new();
@@ -128,7 +143,7 @@ fn download(store_id: &str) -> Result<Vec<u8>, String> {
         .read_to_end(&mut bytes)
         .map_err(|e| format!("İndirilemedi: {e}"))?;
     if bytes.is_empty() {
-        return Err("Bu uzantı mağazada bulunamadı".into());
+        return Err("Boş cevap geldi".into());
     }
     Ok(bytes)
 }

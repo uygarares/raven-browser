@@ -3,6 +3,9 @@
 //! Each window (windows.rs) holds its toolbar webview, a popup webview for menus
 //! and its tabs (tabs.rs). Websites in tabs get no access to Raven's commands.
 
+// Windows callbacks run inside unsafe blocks; nested ones are fine.
+#![cfg_attr(windows, allow(unused_unsafe))]
+
 mod bookmarks;
 mod downloads;
 mod extensions;
