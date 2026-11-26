@@ -86,6 +86,31 @@ pub fn record(app: &AppHandle, url: &str, title: &str) {
     history.dirty.store(true, Ordering::SeqCst);
 }
 
+/// Adds visits from another browser: (address, title, time in ms, visit count).
+/// Each address is added once per visit, up to 5, so suggestions rank it.
+pub fn import(app: &AppHandle, visits: Vec<(String, String, i64, i64)>) -> usize {
+    let history = app.state::<History>();
+    let mut entries = history.entries.lock().unwrap();
+    let known: std::collections::HashSet<String> = entries.iter().map(|e| e.url.clone()).collect();
+    let mut added = 0;
+    for (url, title, time, count) in visits {
+        if known.contains(&url) || !worth_keeping(&url) {
+            continue;
+        }
+        for _ in 0..count.clamp(1, 5) {
+            entries.push(Entry { url: url.clone(), title: title.clone(), time });
+        }
+        added += 1;
+    }
+    entries.sort_by_key(|e| e.time);
+    if entries.len() > MAX_ENTRIES {
+        let extra = entries.len() - MAX_ENTRIES;
+        entries.drain(..extra);
+    }
+    history.dirty.store(true, Ordering::SeqCst);
+    added
+}
+
 /// Fills in the title of the latest visit to an address.
 pub fn set_title(app: &AppHandle, url: &str, title: &str) {
     let history = app.state::<History>();

@@ -1076,7 +1076,7 @@ async function loadWelcome() {
         status.textContent = `${source.name} aktarılıyor…`;
         try {
           const result = await invoke("import_browser", { id: source.id });
-          status.textContent = `${source.name}: ${result.bookmarks} yer imi eklendi`;
+          status.textContent = `${source.name}: ${result.bookmarks} yer imi, ${result.history} sayfa geçmişi eklendi`;
         } catch (error) {
           status.textContent = String(error);
           button.disabled = false;
@@ -1139,7 +1139,7 @@ async function loadImportSources() {
         importStatus.textContent = `${source.name} içe aktarılıyor…`;
         try {
           const result = await invoke("import_browser", { id: source.id });
-          importStatus.textContent = `${source.name}: ${result.bookmarks} yer imi, ${result.history} geçmiş kaydı eklendi`;
+          importStatus.textContent = `${source.name}: ${result.bookmarks} yer imi, ${result.history} sayfa geçmişi eklendi`;
         } catch (error) {
           importStatus.textContent = String(error);
         } finally {

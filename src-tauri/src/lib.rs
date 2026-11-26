@@ -20,6 +20,7 @@ mod perf;
 mod permissions;
 mod reader;
 mod session;
+mod sqlite_reader;
 mod settings;
 mod shield;
 mod shortcuts;

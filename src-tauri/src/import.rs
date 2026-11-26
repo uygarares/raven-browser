@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::AppHandle;
 
 use crate::bookmarks;
+use crate::sqlite_reader::Database;
 
 /// id, name, profile folder under %LOCALAPPDATA% (or %APPDATA% for Opera).
 const SOURCES: &[(&str, &str, &str, bool)] = &[
@@ -73,6 +74,29 @@ pub struct Imported {
     history: usize,
 }
 
+/// Chromium's history file ("History", SQLite): the most visited and most
+/// recent pages, newest first. Times are microseconds since 1601.
+pub fn read_history(bytes: &[u8], limit: usize) -> Result<Vec<(String, String, i64, i64)>, String> {
+    let db = Database::open(bytes)?;
+    let root = db.table_root("urls").ok_or("Geçmiş tablosu bulunamadı")?;
+    let mut rows: Vec<(String, String, i64, i64)> = db
+        .rows(root)
+        .into_iter()
+        .filter(|row| row.len() >= 6 && row.get(6).map_or(0, |h| h.as_int()) == 0)
+        .filter_map(|row| {
+            let url = row[1].as_text().to_string();
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
+                return None;
+            }
+            let ms = row[5].as_int() / 1000 - 11_644_473_600_000;
+            Some((url, row[2].as_text().to_string(), ms, row[3].as_int()))
+        })
+        .collect();
+    rows.sort_by(|a, b| b.2.cmp(&a.2));
+    rows.truncate(limit);
+    Ok(rows)
+}
+
 #[tauri::command]
 pub async fn import_browser(app: AppHandle, id: String) -> Result<Imported, String> {
     let (_, name, dir, roaming) = SOURCES.iter().find(|(s, _, _, _)| *s == id).ok_or("Bilinmeyen tarayıcı")?;
@@ -80,12 +104,29 @@ pub async fn import_browser(app: AppHandle, id: String) -> Result<Imported, Stri
     let text = std::fs::read_to_string(dir.join("Bookmarks")).map_err(|_| format!("{name} yer imleri okunamadı"))?;
     let items = read_bookmarks(&text);
     let added = bookmarks::add_many(&app, items);
-    Ok(Imported { bookmarks: added, history: 0 })
+    // History: copied first, the browser may have it open.
+    let history = std::fs::read(dir.join("History"))
+        .ok()
+        .and_then(|bytes| read_history(&bytes, 4000).ok())
+        .map(|visits| crate::history::import(&app, visits))
+        .unwrap_or(0);
+    Ok(Imported { bookmarks: added, history })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_chrome_history() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/history.sqlite");
+        let Ok(bytes) = std::fs::read(path) else { return };
+        let visits = read_history(&bytes, 10).unwrap();
+        assert_eq!(visits.len(), 10);
+        assert_eq!(visits[0].0, "https://example.com/page/3000");
+        // 13370000000003000 µs since 1601 = 1725526400003 ms since 1970.
+        assert_eq!(visits[0].2, 13_370_000_000_003_000 / 1000 - 11_644_473_600_000);
+    }
 
     #[test]
     fn reads_nested_bookmarks() {
