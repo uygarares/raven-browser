@@ -1465,6 +1465,10 @@ const aiHeader = document.getElementById("ai-header");
 const aiProviders = aiHeader.querySelector(".ai-providers");
 const AI_NAMES = { claude: "Claude", chatgpt: "ChatGPT", gemini: "Gemini" };
 
+// The panel shows the AI ("") or a pinned site (its address).
+let panelSite = "";
+const aiSites = aiHeader.querySelector(".ai-sites");
+
 function renderProviders() {
   if (!settings) return;
   aiProviders.replaceChildren(
@@ -1472,13 +1476,57 @@ function renderProviders() {
       const button = document.createElement("button");
       button.className = "ai-provider";
       button.setAttribute("role", "radio");
-      button.setAttribute("aria-checked", String(settings.aiProvider === id));
+      button.setAttribute("aria-checked", String(!panelSite && settings.aiProvider === id));
       button.textContent = name;
-      button.addEventListener("click", () => run("set_ai_provider", { provider: id }).then(loadSettings));
+      button.addEventListener("click", async () => {
+        panelSite = "";
+        await run("set_ai_provider", { provider: id });
+        await run("show_in_panel", { url: "" });
+        loadSettings();
+      });
       return button;
     }),
   );
+  aiSites.replaceChildren(
+    ...(settings.panelSites || []).map((site) => {
+      const button = document.createElement("button");
+      button.className = "ai-site";
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", String(panelSite === site.url));
+      button.title = `${site.name}\nSağ tık: panelden kaldır`;
+      const mark = document.createElement("span");
+      mark.className = "mark-small";
+      RavenIcons.fill(mark, site.url, site.name);
+      button.append(mark);
+      button.addEventListener("click", () => {
+        panelSite = site.url;
+        run("show_in_panel", { url: site.url });
+        renderProviders();
+      });
+      button.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        if (panelSite === site.url) {
+          panelSite = "";
+          run("show_in_panel", { url: "" });
+        }
+        run("unpin_from_panel", { url: site.url });
+      });
+      return button;
+    }),
+  );
+  aiHeader.classList.toggle("site-mode", Boolean(panelSite));
+  const siteName = document.getElementById("ai-site-name");
+  const site = (settings.panelSites || []).find((s) => s.url === panelSite);
+  siteName.hidden = !site;
+  siteName.textContent = site ? site.name : "";
 }
+document.getElementById("ai-pin").addEventListener("click", async () => {
+  try {
+    await invoke("pin_to_panel");
+  } catch (error) {
+    showToast(String(error));
+  }
+});
 
 function showAiPanel(open) {
   document.body.classList.toggle("ai-open", open);
@@ -1499,6 +1547,10 @@ aiHeader.querySelectorAll("[data-ai]").forEach((chip) =>
   }),
 );
 listenHere("ai-panel", (payload) => showAiPanel(payload.open));
+listenHere("panel-ai", () => {
+  panelSite = "";
+  renderProviders();
+});
 
 // Full screen (F11, or a video's full screen button).
 let hintTimer = null;

@@ -60,6 +60,14 @@ pub struct Settings {
     pub vertical_tabs: bool,
     /// The welcome page version already seen (shown again when it changes).
     pub welcome: u32,
+    /// Sites pinned to the side panel next to the AI (WhatsApp Web, Spotify…).
+    pub panel_sites: Vec<PanelSite>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct PanelSite {
+    pub name: String,
+    pub url: String,
 }
 
 /// Search engines Raven offers: id, name, and the address the words are added to.
@@ -106,6 +114,7 @@ impl Default for Settings {
             https_upgrade: true,
             vertical_tabs: false,
             welcome: 0,
+            panel_sites: Vec::new(),
         }
     }
 }

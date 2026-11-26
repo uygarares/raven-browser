@@ -13,7 +13,7 @@
   --page-margin: 8px;
   --page-radius: 12px;
   --ai-width: 420px;
-  --ai-header: 48px;
+  --ai-header: 84px;
   /* Must match SIDEBAR_WIDTH in windows.rs. */
   --sidebar-width: 240px;
 }
@@ -417,7 +417,8 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
 }
 .mark-small img { width: 14px; height: 14px; }
 
-/* The AI panel's header (its page sits right under it). */
+/* The side panel's header (its page sits right under it): the AI, pinned
+   sites, and quick actions for the page. */
 .ai-header {
   position: fixed;
   top: var(--toolbar-height);
@@ -425,17 +426,20 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
   width: var(--ai-width);
   height: calc(var(--ai-header) - 6px);
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
   gap: 6px;
-  padding: 0 4px 0 6px;
+  padding: 0 6px;
   border-radius: var(--page-radius);
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--line);
 }
-.ai-providers { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--field); }
+.ai-top, .ai-actions { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.ai-space { flex: 1; }
+.ai-providers { flex: none; display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--field); }
 .ai-provider {
   height: 26px;
-  padding: 0 10px;
+  padding: 0 9px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -443,10 +447,23 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
   font: 700 12px var(--font);
 }
 .ai-provider[aria-checked="true"] { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
-.ai-actions { flex: 1; display: flex; gap: 4px; justify-content: flex-end; }
+.ai-sites { display: flex; gap: 2px; min-width: 0; overflow: hidden; }
+.ai-site {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+.ai-site:hover { background: var(--hover); }
+.ai-site[aria-checked="true"] { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.ai-actions { padding-left: 2px; }
 .ai-chip {
   height: 26px;
-  padding: 0 10px;
+  padding: 0 11px;
   border: 0;
   border-radius: 13px;
   background: var(--accent-soft);
@@ -456,6 +473,8 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
 }
 .ai-chip:hover { filter: brightness(1.2); }
 .ai-chip:active { transform: scale(0.95); }
+.ai-header.site-mode .ai-chip { display: none; }
+.ai-site-name { color: var(--text-2); font-weight: 700; font-size: 12.5px; padding-left: 6px; }
 
 .fullscreen-hint {
   position: fixed;

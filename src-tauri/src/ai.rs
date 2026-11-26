@@ -17,9 +17,9 @@ pub const PROVIDERS: &[(&str, &str, &str)] = &[
     ("gemini", "Gemini", "https://gemini.google.com/app"),
 ];
 
-/// The toolbar draws the panel's header (AI picker, quick actions) above the
-/// AI's page.
-pub const HEADER: f64 = 48.0;
+/// The toolbar draws the panel's header (AI picker, pinned sites, quick
+/// actions) above the panel's page.
+pub const HEADER: f64 = 84.0;
 
 fn label(window: &str) -> String {
     format!("ai-{window}")
@@ -83,6 +83,20 @@ fn create(app: &AppHandle, window: &str) -> Result<Webview, String> {
         .map_err(|e| e.to_string())
 }
 
+/// If the panel shows a pinned site, goes back to the AI (the message goes there).
+fn ensure_ai(app: &AppHandle, window: &str, panel: &Webview) {
+    let provider: tauri::Url = match provider_url(&current_provider(app)).parse() {
+        Ok(url) => url,
+        Err(_) => return,
+    };
+    let showing = panel.url().ok().and_then(|u| u.host_str().map(String::from));
+    if showing.as_deref() != provider.host_str() {
+        let _ = panel.navigate(provider);
+        use tauri::Emitter;
+        let _ = app.emit("panel-ai", serde_json::json!({ "window": window }));
+    }
+}
+
 /// The panel's webview of the window a command came from.
 fn panel_of(app: &AppHandle, window: &str) -> Option<Webview> {
     app.get_webview(&label(window))
@@ -125,6 +139,56 @@ pub async fn set_ai_provider(app: AppHandle, provider: String) -> Result<(), Str
             let _ = panel.navigate(url.clone());
         }
     }
+    use tauri::Emitter;
+    let _ = app.emit("settings", &settings);
+    Ok(())
+}
+
+/// Shows a pinned site in the side panel ("" goes back to the AI).
+#[tauri::command]
+pub async fn show_in_panel(app: AppHandle, webview: Webview, url: String) -> Result<(), String> {
+    let window = windows::window_of(&webview);
+    if !windows::ai_panel_open(&app, &window) {
+        windows::set_ai_panel(&app, &window, true);
+    }
+    let target = if url.is_empty() { provider_url(&current_provider(&app)).to_string() } else { url };
+    let target: tauri::Url = target.parse().map_err(|_| "Bad address")?;
+    panel_of(&app, &window).ok_or("No panel")?.navigate(target).map_err(|e| e.to_string())
+}
+
+/// Pins the active tab's site to the side panel.
+#[tauri::command]
+pub async fn pin_to_panel(app: AppHandle, webview: Webview) -> Result<(), String> {
+    let window = windows::window_of(&webview);
+    let (url, title) = tabs::active_page(&app, &window).ok_or("Açık bir sayfa yok")?;
+    if !url.starts_with("http") {
+        return Err("Önce bir site aç".into());
+    }
+    let settings = {
+        let state = app.state::<SettingsState>();
+        let mut settings = state.0.lock().unwrap();
+        let home = url.parse::<tauri::Url>().map(|u| format!("{}://{}/", u.scheme(), u.host_str().unwrap_or(""))).unwrap_or(url.clone());
+        if !settings.panel_sites.iter().any(|s| s.url == home) && settings.panel_sites.len() < 8 {
+            let name = title.split([' ', '-', '|', '–']).find(|w| !w.is_empty()).unwrap_or("Site").to_string();
+            settings.panel_sites.push(crate::settings::PanelSite { name, url: home });
+        }
+        settings.clone()
+    };
+    crate::settings::store(&app, &settings)?;
+    use tauri::Emitter;
+    let _ = app.emit("settings", &settings);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unpin_from_panel(app: AppHandle, url: String) -> Result<(), String> {
+    let settings = {
+        let state = app.state::<SettingsState>();
+        let mut settings = state.0.lock().unwrap();
+        settings.panel_sites.retain(|s| s.url != url);
+        settings.clone()
+    };
+    crate::settings::store(&app, &settings)?;
     use tauri::Emitter;
     let _ = app.emit("settings", &settings);
     Ok(())
@@ -225,6 +289,7 @@ pub async fn ask_in(app: &AppHandle, window: &str, action: &str, question: Optio
         windows::set_ai_panel(&app, &window, true);
     }
     let panel = panel_of(&app, &window).ok_or("Yapay zeka paneli açılamadı")?;
+    ensure_ai(&app, &window, &panel);
     let message = prompt(&action, question.as_deref(), &title, &url, &text);
     panel.eval(fill_script(&message)).map_err(|e| e.to_string())?;
     let _ = panel.set_focus();
@@ -237,6 +302,7 @@ pub fn ask_direct(app: &AppHandle, window: &str, question: &str) {
         windows::set_ai_panel(app, window, true);
     }
     if let Some(panel) = panel_of(app, window) {
+        ensure_ai(app, window, &panel);
         if !question.trim().is_empty() {
             let _ = panel.eval(fill_script(question.trim()));
         }
