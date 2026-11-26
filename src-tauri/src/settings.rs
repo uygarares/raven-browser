@@ -188,6 +188,18 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<Setting
     Ok(settings)
 }
 
+/// Takes the settings from a backup.
+pub fn apply_restored(app: &AppHandle, restored: Settings) -> Result<(), String> {
+    let settings = Settings { welcome: restored.welcome.max(2), ..restored }.clamped();
+    store(app, &settings)?;
+    *app.state::<SettingsState>().0.lock().unwrap() = settings.clone();
+    let _ = app.emit("settings", &settings);
+    crate::bookmarks::refresh_bar(app);
+    crate::tabs::apply_settings(app);
+    crate::windows::set_vertical_tabs(app, settings.vertical_tabs);
+    Ok(())
+}
+
 #[derive(Serialize)]
 pub struct Engine {
     id: &'static str,

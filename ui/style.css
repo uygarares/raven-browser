@@ -897,3 +897,4 @@ body.vertical-tabs .tab[data-color]:not([data-color=""])::before { left: -6px; r
 
 .panel.settings .panel-head { justify-content: space-between; gap: 12px; }
 .settings-search { flex: 1; max-width: 420px; margin: 0; height: 40px; }
+.file-button { display: inline-flex; align-items: center; cursor: pointer; }

@@ -1169,6 +1169,29 @@ settingsSearch.addEventListener("input", () => {
   }
 });
 
+// Backup and restore.
+const backupStatus = document.getElementById("backup-status");
+document.getElementById("backup-export").addEventListener("click", async () => {
+  try {
+    const name = await invoke("export_backup");
+    backupStatus.textContent = `İndirilenler klasörüne kaydedildi: ${name}`;
+  } catch (error) {
+    backupStatus.textContent = String(error);
+  }
+});
+document.getElementById("backup-import").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const result = await invoke("import_backup", { text: await file.text() });
+    backupStatus.textContent = `Geri yüklendi: ${result.bookmarks} yer imi, ${result.history} sayfa geçmişi ve ayarlar`;
+    loadSettings();
+  } catch (error) {
+    backupStatus.textContent = String(error);
+  }
+  event.target.value = "";
+});
+
 // Default browser.
 const defaultButton = document.getElementById("default-browser");
 async function showDefault() {

@@ -124,6 +124,7 @@
       <a href="#set-shield">Gizlilik ve güvenlik</a>
       <a href="#set-speed">Performans</a>
       <a href="#set-import">İçe aktar</a>
+      <a href="#set-backup">Yedekle</a>
       <a href="#set-default">Varsayılan tarayıcı</a>
       <a href="#set-about">Hakkında</a>
     </nav>
@@ -290,6 +291,17 @@
         <div class="setting">
           <span><span class="setting-name">Başka tarayıcıdan taşı</span><span id="import-status" class="setting-note">Yer imleri ve geçmiş kopyalanır</span></span>
           <div class="button-row" id="import-buttons"></div>
+        </div>
+      </section>
+
+      <section id="set-backup" class="settings-group">
+        <h2>Yedekle</h2>
+        <div class="setting">
+          <span><span class="setting-name">Yer imleri, geçmiş ve ayarlar</span><span id="backup-status" class="setting-note">Tek bir dosyaya kaydedilir. Başka bir bilgisayarda “Geri yükle” ile açarsın</span></span>
+          <div class="button-row">
+            <button id="backup-export" class="secondary">Yedekle</button>
+            <label class="secondary file-button">Geri yükle<input id="backup-import" type="file" accept=".json,application/json" hidden></label>
+          </div>
         </div>
       </section>
 

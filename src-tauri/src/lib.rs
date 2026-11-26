@@ -7,6 +7,7 @@
 #![cfg_attr(windows, allow(unused_unsafe))]
 
 mod ai;
+mod backup;
 mod bookmarks;
 mod default_browser;
 mod downloads;
@@ -111,6 +112,8 @@ pub fn run() {
             perf::get_memory,
             reader::toggle_reader,
             previews::get_tab_preview,
+            backup::export_backup,
+            backup::import_backup,
             import::get_import_sources,
             import::import_browser,
             shield::get_shield,
