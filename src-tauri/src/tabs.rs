@@ -42,7 +42,46 @@ struct TabList {
     next_id: u32,
     /// Addresses of recently closed tabs, newest last (for Ctrl+Shift+T).
     closed: Vec<String>,
+    /// The tab that links were last opened from, and the last tab opened from it,
+    /// so several links opened in a row line up next to each other, like Chrome.
+    last_opened: Option<(u32, u32)>,
 }
+
+/// Where a new tab goes in the tab row.
+#[derive(Clone, Copy)]
+pub enum Place {
+    /// At the end (new tab button, Ctrl+T).
+    End,
+    /// Right after the given tab, after the tabs already opened from it (links).
+    NextTo(u32),
+}
+
+/// Script added to every website: middle click and Ctrl+click on a link ask
+/// Raven to open it in a background tab, by "visiting" a raven-background: address
+/// that Raven catches and cancels. Websites get no other way to talk to Raven.
+const LINK_SCRIPT: &str = r#"(() => {
+  const BACKGROUND = "raven-background:";
+  function linkOf(event) {
+    const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    return target && /^https?:/i.test(target.href) ? target.href : null;
+  }
+  function openInBackground(event, url) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    location.href = BACKGROUND + url;
+  }
+  addEventListener("auxclick", (event) => {
+    if (event.button !== 1) return;
+    const url = linkOf(event);
+    if (url) openInBackground(event, url);
+  }, true);
+  addEventListener("click", (event) => {
+    if (event.button !== 0 || !(event.ctrlKey || event.metaKey) || event.shiftKey) return;
+    const url = linkOf(event);
+    if (url) openInBackground(event, url);
+  }, true);
+})();"#;
+const BACKGROUND_PREFIX: &str = "raven-background:";
 
 const MAX_CLOSED: usize = 25;
 
@@ -153,12 +192,30 @@ pub fn to_url(input: &str) -> Result<Url, String> {
 }
 
 /// Adds a tab to the list, without a webview yet.
-fn add_tab(app: &AppHandle, url: &str, title: &str) -> u32 {
+fn add_tab(app: &AppHandle, url: &str, title: &str, place: Place) -> u32 {
     let new_tab = is_new_tab_url(url);
     with_tabs(app, |list| {
         list.next_id += 1;
         let id = list.next_id;
-        list.order.push(id);
+        let index = match place {
+            Place::End => list.order.len(),
+            Place::NextTo(opener) => match list.order.iter().position(|t| *t == opener) {
+                Some(opener_index) => {
+                    let after = match list.last_opened {
+                        Some((from, child)) if from == opener => list
+                            .order
+                            .iter()
+                            .position(|t| *t == child)
+                            .unwrap_or(opener_index),
+                        _ => opener_index,
+                    };
+                    list.last_opened = Some((opener, id));
+                    after + 1
+                }
+                None => list.order.len(),
+            },
+        };
+        list.order.insert(index, id);
         list.info.insert(
             id,
             TabInfo {
@@ -175,7 +232,7 @@ fn add_tab(app: &AppHandle, url: &str, title: &str) -> u32 {
 
 /// Adds a restored tab that loads only when it is opened.
 pub fn add_sleeping_tab(app: &AppHandle, url: &str, title: &str) -> u32 {
-    add_tab(app, url, title)
+    add_tab(app, url, title, Place::End)
 }
 
 /// Creates the webview of a tab and loads its page.
@@ -202,8 +259,24 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     let on_load = app.clone();
     let on_title = app.clone();
     let on_popup = app.clone();
+    let on_link = app.clone();
     let builder = WebviewBuilder::new(label(id), target)
         .background_color(background_for(&url))
+        .initialization_script(LINK_SCRIPT)
+        // Middle click or Ctrl+click on a link: open it next to this tab, in the background.
+        .on_navigation(move |url| {
+            let Some(link) = url.as_str().strip_prefix(BACKGROUND_PREFIX) else {
+                return true;
+            };
+            if link.starts_with("http://") || link.starts_with("https://") {
+                let app = on_link.clone();
+                let link = link.to_string();
+                tauri::async_runtime::spawn(async move {
+                    let _ = create_tab_at(&app, &link, false, Place::NextTo(id));
+                });
+            }
+            false
+        })
         .on_page_load(move |webview, payload| {
             let loading = matches!(payload.event(), PageLoadEvent::Started);
             let mut url = payload.url().to_string();
@@ -234,11 +307,11 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
             }
             update_tab(&on_title, id, |tab| tab.title = title);
         })
-        // Links that open a new window open in a new Raven tab instead.
+        // Links that open a new window open in a new Raven tab next to this one.
         .on_new_window(move |url, _features| {
             let app = on_popup.clone();
             tauri::async_runtime::spawn(async move {
-                let _ = create_tab(&app, url.as_str(), true);
+                let _ = create_tab_at(&app, url.as_str(), true, Place::NextTo(id));
             });
             NewWindowResponse::Deny
         });
@@ -258,7 +331,12 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
 
 /// Opens a new tab. Must not be called from a webview event handler (use a spawned task).
 pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u32> {
-    let id = add_tab(app, url, "");
+    create_tab_at(app, url, activate, Place::End)
+}
+
+/// Opens a new tab at a given place. Must not be called from a webview event handler.
+pub fn create_tab_at(app: &AppHandle, url: &str, activate: bool, place: Place) -> tauri::Result<u32> {
+    let id = add_tab(app, url, "", place);
     if activate {
         show_only(app, id);
     } else {
@@ -271,7 +349,13 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
 /// Shows one tab (waking it if it is asleep) and hides the others. The new tab is
 /// shown before the others are hidden, so nothing flashes in between.
 pub fn show_only(app: &AppHandle, id: u32) {
-    with_tabs(app, |list| list.active = Some(id));
+    with_tabs(app, |list| {
+        // Switching away ends a row of links opened from one tab, like Chrome.
+        if matches!(list.last_opened, Some((from, child)) if from != id && child != id) {
+            list.last_opened = None;
+        }
+        list.active = Some(id);
+    });
     let target = label(id);
     let target_webview = match app.get_webview(&target) {
         Some(webview) => Some(webview),
