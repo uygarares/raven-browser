@@ -1732,6 +1732,36 @@ listenHere("toolbar-command", (payload) => {
   if (payload.command === "qr") showQr();
 });
 
+// New version on GitHub: a note once a day, with a link to download it.
+async function checkForUpdate() {
+  if (document.body.classList.contains("private-window")) return;
+  try {
+    const last = Number(localStorage.getItem("raven-update-check") || 0);
+    if (Date.now() - last < 24 * 60 * 60 * 1000) return;
+    localStorage.setItem("raven-update-check", String(Date.now()));
+    const current = await window.__TAURI__.app.getVersion();
+    const response = await fetch("https://api.github.com/repos/uygarares/raven-browser/releases/latest");
+    if (!response.ok) return;
+    const release = await response.json();
+    const latest = String(release.tag_name || "").replace(/^v/, "");
+    const newer = (a, b) => {
+      const x = a.split(".").map(Number), y = b.split(".").map(Number);
+      for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+      return false;
+    };
+    if (latest && newer(latest, current)) {
+      showToast(`Raven ${latest} çıktı. Ayarlar > Hakkında'dan indirebilirsin`);
+      const about = document.querySelector("#set-about .setting-note");
+      if (about) about.textContent = `Yeni sürüm: ${latest}. GitHub'daki sürümler sayfasından indir`;
+    }
+  } catch {}
+}
+setTimeout(checkForUpdate, 15000);
+window.__TAURI__.app?.getVersion?.().then((version) => {
+  const name = document.querySelector("#set-about .setting-name");
+  if (name) name.textContent = `Raven ${version}`;
+});
+
 // Game mode badge.
 listen("vertical-tabs", ({ payload }) => document.body.classList.toggle("vertical-tabs", payload));
 listen("game-mode", ({ payload }) => document.body.classList.toggle("game-mode", payload));
