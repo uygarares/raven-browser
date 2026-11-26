@@ -404,6 +404,10 @@ function drawSuggestions(data) {
         mark.classList.add("plain");
         mark.innerHTML = ICONS.search;
         children.push(el("span", { class: "title", text: row.text }), el("span", { class: "kind", text: "Ara" }));
+      } else if (row.kind === "ai") {
+        mark.classList.add("plain");
+        mark.innerHTML = ICONS.sparkle;
+        children.push(el("span", { class: "title", text: row.text }), el("span", { class: "kind", text: "Yapay zekaya sor" }));
       } else {
         RavenIcons.fill(mark, row.url, row.title);
         children.push(el("span", { class: "title", text: row.title }), el("span", { class: "url", text: shortUrl(row.url) }));
@@ -414,7 +418,8 @@ function drawSuggestions(data) {
       // mousedown, before the address bar loses focus and closes this.
       button.addEventListener("mousedown", (event) => {
         event.preventDefault();
-        run("navigate", { input: row.kind === "search" ? row.text : row.url });
+        if (row.kind === "ai") run("ask_question", { question: row.text });
+        else run("navigate", { input: row.kind === "search" ? row.text : row.url });
         close();
       });
       return button;

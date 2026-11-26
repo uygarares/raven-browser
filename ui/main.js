@@ -48,7 +48,15 @@ document.getElementById("reload").addEventListener("click", () => run("reload"))
 addressForm.addEventListener("submit", (event) => {
   event.preventDefault();
   closeSuggestions();
-  run("navigate", { input: address.value });
+  // "? question" goes to the AI panel.
+  const text = address.value.trim();
+  if (text.startsWith("?") && text.length > 1) {
+    run("ask_question", { question: text.slice(1).trim() });
+    const tab = activeTab();
+    address.value = tab ? tab.url : "";
+  } else {
+    run("navigate", { input: address.value });
+  }
   address.blur();
 });
 address.addEventListener("focus", () => address.select());
@@ -251,7 +259,10 @@ address.addEventListener("input", async (event) => {
     address.value = query + result.inline.slice(query.length);
     address.setSelectionRange(query.length, address.value.length);
   }
-  rows = [{ kind: "search", text: query }, ...result.items];
+  const question = query.startsWith("?") ? query.slice(1).trim() : query;
+  rows = query.startsWith("?")
+    ? [{ kind: "ai", text: question }]
+    : [{ kind: "search", text: query }, ...result.items, ...(query.includes(" ") ? [{ kind: "ai", text: question }] : [])];
   showSuggestions();
 });
 
@@ -272,7 +283,7 @@ address.addEventListener("keydown", (event) => {
     // Cycle through -1 (what was typed), 0 … rows.length - 1.
     selected = ((selected + 1 + step + rows.length + 1) % (rows.length + 1)) - 1;
     const row = rows[selected];
-    address.value = !row ? typed : row.kind === "search" ? row.text : row.url;
+    address.value = !row ? typed : row.kind === "search" ? row.text : row.kind === "ai" ? `? ${row.text}` : row.url;
     run("popup_update", { data: { selected } });
   } else if (event.key === "Escape") {
     event.preventDefault();

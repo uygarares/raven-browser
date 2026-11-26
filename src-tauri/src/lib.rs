@@ -131,6 +131,7 @@ pub fn run() {
             ai::pin_to_panel,
             ai::unpin_from_panel,
             ai::ask_ai,
+            ai::ask_question,
             windows::get_window_info,
             windows::set_full_window_command,
             windows::open_popup_command,

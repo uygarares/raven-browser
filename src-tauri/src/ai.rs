@@ -296,6 +296,12 @@ pub async fn ask_in(app: &AppHandle, window: &str, action: &str, question: Optio
     Ok(())
 }
 
+/// A question typed in the address bar ("? …") or picked from suggestions.
+#[tauri::command]
+pub async fn ask_question(app: AppHandle, webview: Webview, question: String) {
+    ask_direct(&app, &windows::window_of(&webview), &question);
+}
+
 /// Opens the AI panel and sends it a question (or just opens it when empty).
 pub fn ask_direct(app: &AppHandle, window: &str, question: &str) {
     if !windows::ai_panel_open(app, window) {
