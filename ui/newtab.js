@@ -12,6 +12,7 @@ try {
   document.documentElement.dataset.appearance = localStorage.getItem("raven-appearance") || "dark";
   document.documentElement.dataset.accent = localStorage.getItem("raven-accent") || "violet";
 } catch {}
+RavenThemes.applySaved();
 
 const greeting = document.getElementById("greeting");
 function greet(hour) {

@@ -17,6 +17,7 @@ function applyLook() {
     document.documentElement.dataset.appearance = localStorage.getItem("raven-appearance") || "dark";
     document.documentElement.dataset.accent = localStorage.getItem("raven-accent") || "violet";
   } catch {}
+  RavenThemes.applySaved();
 }
 applyLook();
 listen("settings", () => setTimeout(applyLook, 50));

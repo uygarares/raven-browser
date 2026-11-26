@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "themes": [
+    { "id": "aurora", "name": "Kuzey Işıkları", "author": "Raven", "colors": { "ink": "#08111a", "ink2": "#0f1b27", "page": "#0b151f", "menu": "#132232", "violet": "#3ddc97", "blue": "#2fb5d0", "teal": "#a184f7" } },
+    { "id": "sakura", "name": "Sakura", "author": "Raven", "colors": { "ink": "#1a0e16", "ink2": "#25141f", "page": "#1d111a", "menu": "#2a1724", "violet": "#ff8fb8", "blue": "#ffc2d6", "teal": "#c58cff" } },
+    { "id": "dune", "name": "Çöl", "author": "Raven", "colors": { "ink": "#17120c", "ink2": "#211a12", "page": "#1a150f", "menu": "#271f15", "violet": "#e8a44a", "blue": "#d4704a", "teal": "#f3d28a" } },
+    { "id": "matrix", "name": "Matris", "author": "Raven", "colors": { "ink": "#050a06", "ink2": "#0b140d", "page": "#07100a", "menu": "#0f1c12", "violet": "#39ff88", "blue": "#1fbf5f", "teal": "#b6ff3a" } }
+  ]
+}

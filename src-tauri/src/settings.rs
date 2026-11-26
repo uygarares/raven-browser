@@ -62,6 +62,8 @@ pub struct Settings {
     pub welcome: u32,
     /// Sites pinned to the side panel next to the AI (WhatsApp Web, Spotify…).
     pub panel_sites: Vec<PanelSite>,
+    /// The theme from the theme store (its colours live in the toolbar).
+    pub theme_id: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -115,6 +117,7 @@ impl Default for Settings {
             vertical_tabs: false,
             welcome: 0,
             panel_sites: Vec::new(),
+            theme_id: "raven".into(),
         }
     }
 }

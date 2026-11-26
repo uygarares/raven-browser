@@ -781,6 +781,7 @@ const panels = {
   settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings(); showMemory(); loadImportSources(); showDefault(); } },
   archive: { el: document.getElementById("archive-panel"), load: loadArchive },
   welcome: { el: document.getElementById("welcome-panel"), load: loadWelcome },
+  themes: { el: document.getElementById("themes-panel"), load: loadThemes },
   bookmarks: { el: document.getElementById("bookmarks-panel"), load: loadBookmarksPage, focus: document.getElementById("bookmarks-search") },
   extensions: { el: document.getElementById("extensions-panel"), load: loadExtensions },
 };
@@ -957,6 +958,19 @@ function applyLook() {
   document.documentElement.dataset.appearance = appearance;
   document.documentElement.dataset.accent = settings.accent;
   document.body.classList.toggle("vertical-tabs", Boolean(settings.verticalTabs));
+  // Theme: built in, or the community theme saved when it was chosen.
+  let theme = RavenThemes.BUILT_IN.find((t) => t.id === settings.themeId);
+  if (!theme) {
+    try {
+      const saved = JSON.parse(localStorage.getItem("raven-theme") || "null");
+      if (saved?.id === settings.themeId) theme = saved;
+    } catch {}
+  }
+  theme = theme || RavenThemes.BUILT_IN[0];
+  RavenThemes.apply(theme, appearance);
+  RavenThemes.remember(theme);
+  const themeName = document.getElementById("theme-name");
+  if (themeName) themeName.textContent = theme.name;
   // The new tab page and the menus read these.
   try {
     localStorage.setItem("raven-appearance", appearance);
@@ -1105,6 +1119,40 @@ function maybeWelcome() {
   welcomeChecked = true;
   if ((settings.welcome || 0) < WELCOME_VERSION && !document.body.classList.contains("private-window")) openPanel("welcome");
 }
+
+// Theme store.
+function themeCard(theme) {
+  const c = theme.colors;
+  const card = document.createElement("button");
+  card.className = "theme-card";
+  card.setAttribute("aria-pressed", String(settings?.themeId === theme.id));
+  card.innerHTML = `<span class="theme-preview"><span class="theme-page"></span></span><span class="theme-name"></span><span class="theme-author"></span>`;
+  card.querySelector(".theme-preview").style.background =
+    `radial-gradient(80% 90% at 0% 0%, ${c.violet}66, transparent 60%), radial-gradient(70% 80% at 100% 0%, ${c.teal}44, transparent 60%), radial-gradient(60% 60% at 60% 100%, ${c.blue}44, transparent 70%), ${c.ink}`;
+  card.querySelector(".theme-page").style.background = c.page;
+  card.querySelector(".theme-name").textContent = theme.name;
+  card.querySelector(".theme-author").textContent = theme.author ? `${theme.author}` : "";
+  card.addEventListener("click", async () => {
+    RavenThemes.remember(theme);
+    await saveSettings({ themeId: theme.id });
+    loadThemes();
+  });
+  return card;
+}
+async function loadThemes() {
+  document.getElementById("themes-built-in").replaceChildren(...RavenThemes.BUILT_IN.map(themeCard));
+  const box = document.getElementById("themes-community");
+  const status = document.getElementById("themes-status");
+  status.textContent = "Topluluk temaları yükleniyor…";
+  try {
+    const themes = await RavenThemes.community();
+    box.replaceChildren(...themes.map(themeCard));
+    status.textContent = themes.length ? "" : "Henüz topluluk teması yok";
+  } catch {
+    status.textContent = "Topluluk temaları yüklenemedi. İnternet bağlantını kontrol et";
+  }
+}
+document.getElementById("open-themes").addEventListener("click", () => openPanel("themes"));
 
 // Default browser.
 const defaultButton = document.getElementById("default-browser");
