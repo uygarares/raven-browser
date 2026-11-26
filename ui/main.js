@@ -283,64 +283,104 @@ document.addEventListener("mouseup", (event) => {
   if (renderLater) render();
 });
 
+// Tab elements by id. They are updated in place, not drawn again, so switching
+// and loading never make the tab row flicker.
+const tabEls = new Map();
+
+function makeTab(tab) {
+  const el = template.content.firstElementChild.cloneNode(true);
+  el.dataset.id = String(tab.id);
+  el.classList.add("opening");
+  el.addEventListener("animationend", () => el.classList.remove("opening"), { once: true });
+  // Event handlers read the current tab from the state, not from when it was made.
+  const current = () => state.tabs.find((item) => item.id === tab.id);
+  el.querySelector(".tab-audio").addEventListener("click", (event) => {
+    event.stopPropagation();
+    const now = current();
+    if (now) run("tab_action", { id: now.id, action: now.muted ? "unmute" : "mute" });
+  });
+  el.addEventListener("mousedown", (event) => {
+    if (event.target.closest(".tab-close, .tab-audio")) return;
+    // Middle click closes the tab, like other browsers.
+    if (event.button === 1) {
+      event.preventDefault();
+      closeTab(tab.id);
+    } else if (event.button === 0) {
+      // Show it as active right away; Raven confirms a moment later.
+      for (const other of tabEls.values()) other.classList.toggle("active", other === el);
+      run("switch_tab", { id: tab.id });
+      startDrag(tab, event);
+    }
+  });
+  el.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    const now = current();
+    if (now) openTabMenu(now, event);
+  });
+  el.querySelector(".tab-close").addEventListener("click", () => closeTab(tab.id));
+  return el;
+}
+
+function updateTab(el, tab) {
+  const isActive = tab.id === state.active;
+  const isNewTabPage = tab.url === "";
+  const isLoading = tab.loading && !isNewTabPage;
+  el.classList.toggle("active", isActive);
+  el.classList.toggle("loading", isLoading);
+  el.classList.toggle("new-tab-page", isNewTabPage);
+  el.classList.toggle("pinned", tab.pinned);
+  el.setAttribute("aria-selected", String(isActive));
+  if (el.title !== tab.title) {
+    el.title = tab.title;
+    el.querySelector(".tab-title").textContent = tab.title;
+  }
+  // The icon changes only when the site or the loading state changes.
+  const iconKey = isNewTabPage ? "new" : isLoading ? "loading" : RavenIcons.hostOf(tab.url);
+  if (el.dataset.icon !== iconKey) {
+    el.dataset.icon = iconKey;
+    const icon = el.querySelector(".tab-icon");
+    icon.className = "tab-icon";
+    icon.replaceChildren();
+    if (isNewTabPage) icon.innerHTML = SEARCH_ICON;
+    else if (!isLoading) RavenIcons.fill(icon, tab.url, tab.title);
+  }
+  // Sound: a speaker on tabs that play sound; press it to mute the site.
+  const audio = el.querySelector(".tab-audio");
+  const audioKey = tab.muted ? "muted" : tab.audible ? "sound" : "";
+  if (audio.dataset.state !== audioKey) {
+    audio.dataset.state = audioKey;
+    audio.hidden = audioKey === "";
+    audio.innerHTML = tab.muted ? MUTED_ICON : SOUND_ICON;
+    const label = tab.muted ? "Sitenin sesini aç" : "Siteyi sessize al";
+    audio.setAttribute("aria-label", label);
+    audio.title = label;
+  }
+}
+
 function render() {
-  // Drawing again would drop the tab being dragged.
+  // Moving elements would drop the tab being dragged.
   if (drag?.moved) {
     renderLater = true;
     return;
   }
   renderLater = false;
-  tabsEl.replaceChildren(
-    ...state.tabs.map((tab) => {
-      const el = template.content.firstElementChild.cloneNode(true);
-      const isActive = tab.id === state.active;
-      const isNewTabPage = tab.url === "";
-      el.dataset.id = String(tab.id);
-      el.classList.toggle("active", isActive);
-      el.classList.toggle("loading", tab.loading && !isNewTabPage);
-      el.classList.toggle("new-tab-page", isNewTabPage);
-      el.classList.toggle("pinned", tab.pinned);
-      el.setAttribute("aria-selected", String(isActive));
-      el.title = tab.title;
-      el.querySelector(".tab-title").textContent = tab.title;
-      const icon = el.querySelector(".tab-icon");
-      if (isNewTabPage) {
-        icon.innerHTML = SEARCH_ICON;
-      } else if (!tab.loading) {
-        RavenIcons.fill(icon, tab.url, tab.title);
-      }
-
-      // Sound: a speaker on tabs that play sound; press it to mute the site.
-      const audio = el.querySelector(".tab-audio");
-      audio.hidden = !(tab.audible || tab.muted);
-      audio.innerHTML = tab.muted ? MUTED_ICON : SOUND_ICON;
-      const audioLabel = tab.muted ? "Sitenin sesini aç" : "Siteyi sessize al";
-      audio.setAttribute("aria-label", audioLabel);
-      audio.title = audioLabel;
-      audio.addEventListener("click", (event) => {
-        event.stopPropagation();
-        run("tab_action", { id: tab.id, action: tab.muted ? "unmute" : "mute" });
-      });
-
-      el.addEventListener("mousedown", (event) => {
-        if (event.target.closest(".tab-close, .tab-audio")) return;
-        // Middle click closes the tab, like other browsers.
-        if (event.button === 1) {
-          event.preventDefault();
-          closeTab(tab.id);
-        } else if (event.button === 0) {
-          run("switch_tab", { id: tab.id });
-          startDrag(tab, event);
-        }
-      });
-      el.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        openTabMenu(tab, event);
-      });
-      el.querySelector(".tab-close").addEventListener("click", () => closeTab(tab.id));
-      return el;
-    }),
-  );
+  const seen = new Set();
+  state.tabs.forEach((tab, index) => {
+    let el = tabEls.get(tab.id);
+    if (!el) {
+      el = makeTab(tab);
+      tabEls.set(tab.id, el);
+    }
+    seen.add(tab.id);
+    updateTab(el, tab);
+    if (tabsEl.children[index] !== el) tabsEl.insertBefore(el, tabsEl.children[index] || null);
+  });
+  for (const [id, el] of tabEls) {
+    if (!seen.has(id)) {
+      el.remove();
+      tabEls.delete(id);
+    }
+  }
 
   const active = activeTab();
   if (active) {

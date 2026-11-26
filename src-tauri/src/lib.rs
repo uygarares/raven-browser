@@ -63,6 +63,7 @@ pub fn run() {
             windows::open_popup_command,
             windows::close_popup_command,
             windows::get_popup_request,
+            windows::popup_ready,
             windows::popup_update,
             windows::get_bookmarks_bar,
         ])

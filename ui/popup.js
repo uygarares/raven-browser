@@ -259,13 +259,31 @@ const DRAW = {
   suggestions: drawSuggestions,
 };
 
-function show(request) {
+let visible = false;
+
+async function show(request) {
   if (!request || request.window !== WINDOW) return;
   current = request;
-  DRAW[request.kind]?.(request.data);
+  await DRAW[request.kind]?.(request.data);
+  if (current !== request) return;
+  // A short fade in when it opens (not on every letter typed for suggestions).
+  if (!visible) {
+    root.classList.remove("enter");
+    void root.offsetWidth;
+    root.classList.add("enter");
+  }
+  visible = true;
+  run("popup_ready");
   // Take the focus (so a click elsewhere closes it) without highlighting a button.
   if (request.kind !== "suggestions") root.focus();
 }
+
+listen("popup-closed", ({ payload }) => {
+  if (payload !== WINDOW) return;
+  visible = false;
+  current = null;
+  root.replaceChildren();
+});
 
 listen("popup-show", ({ payload }) => show(payload));
 listen("popup-update", ({ payload }) => {
@@ -297,7 +315,7 @@ listen("bookmarks-bar", ({ payload }) => {
 // Clicking anywhere else, or Escape, closes it. Suggestions never get focus;
 // the toolbar closes them.
 window.addEventListener("blur", () => {
-  if (current && current.kind !== "suggestions") close();
+  if (visible && current && current.kind !== "suggestions") close();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") close();

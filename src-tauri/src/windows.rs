@@ -101,7 +101,53 @@ pub fn set_bookmarks_bar(app: &AppHandle, show: bool) {
 
 /// Called when a tab webview is created in a window.
 pub fn tab_created(app: &AppHandle, window: &str) {
-    app.state::<Windows>().popup_behind.lock().unwrap().insert(window.to_string());
+    // On Windows the popup is brought to the front when shown (bring_to_front).
+    if !cfg!(windows) {
+        app.state::<Windows>().popup_behind.lock().unwrap().insert(window.to_string());
+    }
+}
+
+/// Puts a webview above the window's other webviews (tabs made later are
+/// drawn on top of older webviews).
+#[cfg(windows)]
+fn bring_to_front(webview: &Webview) {
+    use ::windows::Win32::Foundation::HWND;
+    use ::windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+    let _ = webview.with_webview(|platform| unsafe {
+        // Each webview sits in its own child window, the controller's parent.
+        let mut hwnd = HWND::default();
+        if platform.controller().ParentWindow(&mut hwnd).is_ok() && !hwnd.is_invalid() {
+            let _ = SetWindowPos(hwnd, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn bring_to_front(_webview: &Webview) {}
+
+/// Creates the window's popup webview, hidden, or returns the one there is.
+fn make_popup(app: &AppHandle, window: &str, focus: bool) -> Result<Webview, String> {
+    let label = popup_label(window);
+    let behind = app.state::<Windows>().popup_behind.lock().unwrap().remove(window);
+    match app.get_webview(&label) {
+        Some(popup) if !behind => Ok(popup),
+        other => {
+            if let Some(old) = other {
+                let _ = old.close();
+            }
+            let handle = app.get_window(window).ok_or("No window")?;
+            let builder = WebviewBuilder::new(&label, WebviewUrl::App("popup.html".into()))
+                .background_color(BACKGROUND)
+                .focused(focus);
+            let popup = handle
+                .add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(10.0, 10.0))
+                .map_err(|e| e.to_string())?;
+            let _ = popup.hide();
+            Ok(popup)
+        }
+    }
 }
 
 /// Sizes a window's toolbar and tabs to the window.
@@ -181,6 +227,8 @@ pub fn open_window(
             tabs::create_tab(app, &label, tabs::NEW_TAB, true)?;
         }
     }
+    // Load the popup page now, so menus open at once later.
+    let _ = make_popup(app, &label, false);
 
     let events = app.clone();
     let name = label.clone();
@@ -241,6 +289,8 @@ pub struct PopupRequest {
     pub window: String,
     pub kind: String,
     pub data: serde_json::Value,
+    /// Take the keyboard (not for address suggestions).
+    pub focus: bool,
 }
 
 /// Opens the window's popup at a place (in the window, logical pixels) and size,
@@ -263,34 +313,32 @@ pub fn open_popup(
     let place = LogicalPosition::new(x, y);
     let dimensions = LogicalSize::new(size.0, size.1);
 
-    let label = popup_label(window);
-    let behind = app.state::<Windows>().popup_behind.lock().unwrap().remove(window);
-    let existing = app.get_webview(&label);
-    let popup = match existing {
-        Some(popup) if !behind => popup,
-        other => {
-            if let Some(old) = other {
-                let _ = old.close();
-            }
-            let builder = WebviewBuilder::new(&label, WebviewUrl::App("popup.html".into()))
-                .background_color(BACKGROUND)
-                .focused(focus);
-            let popup = handle.add_child(builder, place, dimensions).map_err(|e| e.to_string())?;
-            let _ = popup.hide();
-            popup
-        }
-    };
+    let popup = make_popup(app, window, focus)?;
     popup.set_position(place).map_err(|e| e.to_string())?;
     popup.set_size(dimensions).map_err(|e| e.to_string())?;
-    // The page draws the content before it is shown. A popup page that is still
-    // loading asks for it with get_popup_request instead.
+    // The popup page draws it, then calls popup_ready, which shows it. So the
+    // old content never flashes. A page still loading asks with get_popup_request.
     app.state::<Windows>().last_popup.lock().unwrap().insert(window.to_string(), request.clone());
     let _ = app.emit("popup-show", &request);
-    popup.show().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The popup page has drawn what was asked: show it on top.
+fn show_popup(app: &AppHandle, window: &str) {
+    let Some(popup) = app.get_webview(&popup_label(window)) else { return };
+    let focus = app
+        .state::<Windows>()
+        .last_popup
+        .lock()
+        .unwrap()
+        .get(window)
+        .map(|request| request.focus)
+        .unwrap_or(false);
+    bring_to_front(&popup);
+    let _ = popup.show();
     if focus {
         let _ = popup.set_focus();
     }
-    Ok(())
 }
 
 pub fn close_popup(app: &AppHandle, window: &str) {
@@ -336,7 +384,7 @@ pub async fn open_popup_command(
     focus: bool,
 ) -> Result<(), String> {
     let window = window_of(&webview);
-    let request = PopupRequest { window: window.clone(), kind, data };
+    let request = PopupRequest { window: window.clone(), kind, data, focus };
     open_popup(&app, &window, request, (x, y), (width, height), focus)
 }
 
@@ -346,6 +394,11 @@ pub async fn open_popup_command(
 pub async fn popup_update(app: AppHandle, webview: Webview, data: serde_json::Value) {
     let window = window_of(&webview);
     let _ = app.emit("popup-update", serde_json::json!({ "window": window, "data": data }));
+}
+
+#[tauri::command]
+pub async fn popup_ready(app: AppHandle, webview: Webview) {
+    show_popup(&app, &window_of(&webview));
 }
 
 #[tauri::command]

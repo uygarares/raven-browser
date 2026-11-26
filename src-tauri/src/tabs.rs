@@ -477,6 +477,13 @@ pub fn create_tab_at(
 ) -> tauri::Result<u32> {
     let id = add_tab(app, window, url, "", place, false);
     if activate {
+        // Show the new tab in the tab row at once; the page loads after.
+        with_tabs(app, |list| {
+            if let Some(tabs) = list.windows.get_mut(window) {
+                tabs.active = Some(id);
+            }
+        });
+        publish(app, window);
         show_only(app, id);
     } else {
         wake(app, id)?.hide()?;
@@ -489,18 +496,23 @@ pub fn create_tab_at(
 /// window. The new tab is shown before the others are hidden, so nothing
 /// flashes in between.
 pub fn show_only(app: &AppHandle, id: u32) {
-    let Some(window) = with_tabs(app, |list| {
+    let Some((window, changed)) = with_tabs(app, |list| {
         let window = list.info.get(&id)?.window.clone();
         let tabs = list.windows.get_mut(&window)?;
         // Switching away ends a row of links opened from one tab, like Chrome.
         if matches!(tabs.last_opened, Some((from, child)) if from != id && child != id) {
             tabs.last_opened = None;
         }
+        let changed = tabs.active != Some(id);
         tabs.active = Some(id);
-        Some(window)
+        Some((window, changed))
     }) else {
         return;
     };
+    // Mark the tab active in the tab row before the page is shown.
+    if changed {
+        publish(app, &window);
+    }
     let target = match app.get_webview(&label(id)) {
         Some(webview) => Some(webview),
         None => wake(app, id).map_err(|e| eprintln!("Could not open tab: {e}")).ok(),

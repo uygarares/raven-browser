@@ -530,3 +530,12 @@ body.private-window { --tab-row: #110c1c; --bar: #191427; --field: #0f0b18; }
   font: 500 12px var(--font);
   align-self: flex-end;
 }
+
+/* New tabs slide in softly. */
+.tab.opening { animation: tab-in 160ms var(--ease); }
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab.opening { animation: none; }
+}
