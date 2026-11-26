@@ -251,7 +251,7 @@ pub async fn clear_data(app: AppHandle, history: bool, kinds: crate::native::Cle
 }
 
 /// A webview of a normal (not private) window: they all share the same browsing data.
-fn normal_webview(app: &AppHandle) -> Result<tauri::Webview, String> {
+pub fn normal_webview(app: &AppHandle) -> Result<tauri::Webview, String> {
     let normal = |label: &str| {
         let window = match label.strip_prefix("tab-") {
             Some(id) => id.parse().ok().and_then(|id| crate::tabs::window_of_tab(app, id)),

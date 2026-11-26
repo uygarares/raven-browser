@@ -737,6 +737,11 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                         crate::native::MenuChoice::OpenLink(url) => {
                             let _ = create_tab_at(&app, &window, &url, false, Place::NextTo(id));
                         }
+                        crate::native::MenuChoice::OpenLinkSplit(url) => {
+                            if let Ok(new) = create_tab_at(&app, &window, &url, false, Place::NextTo(id)) {
+                                let _ = split_with(&app, new, true);
+                            }
+                        }
                         crate::native::MenuChoice::Search(text) => {
                             if let Ok(url) = to_url(&text, &crate::settings::search_url(&app)) {
                                 let _ = create_tab_at(&app, &window, url.as_str(), true, Place::NextTo(id));
@@ -1044,6 +1049,7 @@ pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
         create_tab(app, &window, NEW_TAB, true).map_err(|e| e.to_string())?;
     }
 
+    let closed_url = with_tabs(app, |list| list.info.get(&id).filter(|info| !info.private).map(|info| info.url.clone()));
     let result = with_tabs(app, |list| {
         let info = list.info.remove(&id)?;
         if !info.private {
@@ -1068,6 +1074,9 @@ pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
     let Some((window, next)) = result else {
         return Ok(());
     };
+    if let Some(url) = closed_url {
+        crate::permissions::tab_closed(app, &url);
+    }
     crate::previews::forget(app, id);
     // Split view ends when one of its two tabs closes.
     if let Some(split) = windows::split_of(app, &window) {
@@ -1123,6 +1132,15 @@ fn offer_translation(app: &AppHandle, webview: Webview, id: u32, url: &str) {
             let _ = app.emit("offer-translate", serde_json::json!({ "window": window, "tab": id, "url": url, "host": host, "lang": lang }));
         }
     });
+}
+
+/// Some open tab (not private) shows a page of this site ("example.com").
+pub fn any_tab_on(app: &AppHandle, site: &str) -> bool {
+    with_tabs(app, |list| {
+        list.info.values().any(|tab| {
+            !tab.private && crate::zoom::site_of(&tab.url).is_some_and(|host| host.trim_start_matches("www.") == site)
+        })
+    })
 }
 
 /// Opens the most recently closed tab again.

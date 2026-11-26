@@ -139,7 +139,7 @@ popupButton(siteButton, "site-info", (rect) => {
   const tab = activeTab();
   if (!tab || tab.url === "") return;
   const web = /^https?:/i.test(tab.url);
-  openPopup("site-info", { url: tab.url }, { x: rect.left - 6, y: rect.bottom + 8, width: 330, height: web ? 424 : 120 });
+  openPopup("site-info", { url: tab.url }, { x: rect.left - 6, y: rect.bottom + 8, width: 330, height: web ? 470 : 120 });
 });
 
 // Raven Shield: lit while it blocks, with the number blocked on this page.

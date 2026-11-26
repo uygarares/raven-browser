@@ -48,6 +48,8 @@ pub enum MenuChoice {
     Search(String),
     /// Open a link in a new tab.
     OpenLink(String),
+    /// Open a link next to this page (split view).
+    OpenLinkSplit(String),
     /// Summarize the page with the AI.
     Summarize,
     /// Search for a picture with Google Lens.
@@ -100,6 +102,11 @@ pub fn site_cookies(webview: &Webview, url: &str, delete: bool) -> Result<usize,
 pub struct Memory {
     pub total: u64,
     pub pages: Vec<(String, u64)>,
+}
+
+/// Calls a DevTools protocol method on a webview (no answer).
+pub fn devtools(webview: &Webview, method: &str, params: serde_json::Value) {
+    imp::devtools(webview, method.to_string(), params.to_string());
 }
 
 /// Runs a script as if the person had clicked (needed for picture in picture
@@ -420,12 +427,16 @@ mod imp {
     }
 
     pub fn run_as_user(webview: &Webview, script: String) {
-        use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
         let params = serde_json::json!({ "expression": script, "userGesture": true, "awaitPromise": false }).to_string();
+        devtools(webview, "Runtime.evaluate".into(), params);
+    }
+
+    pub fn devtools(webview: &Webview, method: String, params: String) {
+        use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
         let _ = webview.with_webview(move |platform| unsafe {
             let Ok(core) = platform.controller().CoreWebView2() else { return };
             let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
-            let _ = core.CallDevToolsProtocolMethod(&HSTRING::from("Runtime.evaluate"), &HSTRING::from(params.as_str()), &handler);
+            let _ = core.CallDevToolsProtocolMethod(&HSTRING::from(method.as_str()), &HSTRING::from(params.as_str()), &handler);
         });
     }
 
@@ -492,7 +503,11 @@ mod imp {
                     if has.as_bool() {
                         let mut link = PWSTR::null();
                         target.LinkUri(&mut link)?;
-                        choices.push(("Bağlantıyı yeni sekmede aç".into(), MenuChoice::OpenLink(CoTaskMemPWSTR::from(link).to_string())));
+                        let link = CoTaskMemPWSTR::from(link).to_string();
+                        choices.push(("Bağlantıyı yeni sekmede aç".into(), MenuChoice::OpenLink(link.clone())));
+                        if link.starts_with("http") {
+                            choices.push(("Bağlantıyı yan yana aç".into(), MenuChoice::OpenLinkSplit(link)));
+                        }
                     }
                     let mut kind = COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND::default();
                     target.Kind(&mut kind)?;
@@ -735,6 +750,7 @@ mod imp {
     }
     pub fn save_page(_webview: &Webview) {}
     pub fn run_as_user(_webview: &Webview, _script: String) {}
+    pub fn devtools(_webview: &Webview, _method: String, _params: String) {}
     pub fn watch_downloads(_webview: &Webview, _on_progress: std::sync::Arc<dyn Fn(String, i64, i64) + Send + Sync>) {}
     pub fn cancel_download(_url: &str) {}
     pub fn clear_data(_webview: &Webview, _kinds: super::ClearKinds, _since: f64, tx: Sender<Result<(), String>>) -> Result<(), String> {

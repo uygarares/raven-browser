@@ -266,8 +266,15 @@ async function drawSiteInfo(data) {
         cookies.textContent = typeof removed === "number" ? `${removed} çerez silindi` : "Silindi";
       },
     });
+    const forget = el("input", { type: "checkbox", role: "switch", class: "switch", "aria-label": "Kapatınca bu siteyi unut" });
+    run("get_forget_site", { url: data.url }).then((on) => (forget.checked = Boolean(on)));
+    forget.addEventListener("change", () => run("set_forget_site", { url: data.url, on: forget.checked }));
     children.push(
       el("div", { class: "permission", html: ICONS.archive }, [cookies, clear]),
+      el("label", { class: "permission", html: ICONS.trash, title: "Bu sitenin son sekmesini kapatınca çerezleri ve verileri silinir" }, [
+        el("span", { class: "label", text: "Kapatınca bu siteyi unut" }),
+        forget,
+      ]),
       el("div", { class: "site-foot" }, [
         el("button", {
           class: "reset",

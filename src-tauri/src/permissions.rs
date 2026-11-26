@@ -51,6 +51,59 @@ fn choice_for(saved: &Saved, site: &str, kind: &str) -> Choice {
     saved.get(site).and_then(|kinds| kinds.get(kind)).copied().unwrap_or_default()
 }
 
+/// "Forget this site when I close it" (like Brave): the site's address key.
+fn forget_key(url: &str) -> Option<String> {
+    zoom::site_of(url).map(|host| host.trim_start_matches("www.").to_string())
+}
+
+fn forgets(app: &AppHandle, site: &str) -> bool {
+    app.state::<Permissions>().0.lock().unwrap().get(site).and_then(|kinds| kinds.get("forget")).copied() == Some(Choice::Allow)
+}
+
+#[tauri::command]
+pub async fn get_forget_site(app: AppHandle, url: String) -> bool {
+    forget_key(&url).is_some_and(|site| forgets(&app, &site))
+}
+
+#[tauri::command]
+pub async fn set_forget_site(app: AppHandle, url: String, on: bool) -> Result<(), String> {
+    let site = forget_key(&url).ok_or("Not a website")?;
+    let saved = {
+        let state = app.state::<Permissions>();
+        let mut saved = state.0.lock().unwrap();
+        let kinds = saved.entry(site.clone()).or_default();
+        if on {
+            kinds.insert("forget".into(), Choice::Allow);
+        } else {
+            kinds.remove("forget");
+        }
+        if kinds.is_empty() {
+            saved.remove(&site);
+        }
+        saved.clone()
+    };
+    storage::write(&app, FILE, &saved)
+}
+
+/// A tab closed: if its site is to be forgotten and no other tab shows it,
+/// its cookies and saved data are deleted.
+pub fn tab_closed(app: &AppHandle, url: &str) {
+    let Some(site) = forget_key(url) else { return };
+    if !forgets(app, &site) || crate::tabs::any_tab_on(app, &site) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let Ok(webview) = crate::settings::normal_webview(&app) else { return };
+        for origin in [format!("https://{site}"), format!("https://www.{site}"), format!("http://{site}"), format!("http://www.{site}")] {
+            crate::native::devtools(&webview, "Storage.clearDataForOrigin", serde_json::json!({ "origin": origin, "storageTypes": "all" }));
+        }
+        for page in [format!("https://{site}/"), format!("https://www.{site}/")] {
+            let _ = crate::native::site_cookies(&webview, &page, true);
+        }
+    });
+}
+
 /// Called when a website asks for a permission.
 pub fn decide(app: &AppHandle, webview: &Webview, kind: PermissionKind) -> PermissionResponse {
     let Some(name) = kind_name(&kind) else { return PermissionResponse::Default };
