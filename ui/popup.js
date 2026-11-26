@@ -54,6 +54,7 @@ const ICONS = {
   archive: svg('<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>'),
   moon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
   split: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'),
+  qr: svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-4M14 18v3"/>'),
   play: svg('<path d="M7 5l12 7-12 7z"/>', 14),
   pause: svg('<path d="M8 5v14M16 5v14"/>', 14),
   music: svg('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'),
@@ -266,6 +267,15 @@ async function drawSiteInfo(data) {
       el("div", { class: "site-foot" }, [
         el("button", {
           class: "reset",
+          text: "QR kodu",
+          title: "Bu sayfayı telefonda açmak için QR kodu",
+          onclick: () => {
+            close();
+            window.__TAURI__.event.emit("toolbar-command", { window: WINDOW, command: "qr" });
+          },
+        }),
+        el("button", {
+          class: "reset",
           text: "İzinleri sıfırla",
           onclick: async () => {
             await run("reset_site_permissions", { url: data.url });
@@ -466,6 +476,7 @@ const COMMANDS = [
   ["book", "Okuma görünümü", "reader-mode", ""],
   ["print", "Yazdır", "print", "Ctrl+P"],
   ["camera", "Ekran görüntüsü al", "screenshot", "Ctrl+Shift+S"],
+  ["qr", "Bu sayfanın QR kodu", "ui:qr", ""],
   ["download", "Sayfayı kaydet", "save-page", "Ctrl+S"],
   ["command", "Sayfa kaynağını göster", "view-source", "Ctrl+U"],
   ["star", "Yer imlerine ekle / çıkar", "toggle-bookmark", "Ctrl+D"],
@@ -506,6 +517,7 @@ async function drawPalette(data) {
     close();
     if (row.kind === "tab") run("switch_tab", { id: row.id });
     else if (row.kind === "command" && row.action.startsWith("ai:")) run("ask_ai", { action: row.action.slice(3), question: null });
+    else if (row.kind === "command" && row.action.startsWith("ui:")) window.__TAURI__.event.emit("toolbar-command", { window: WINDOW, command: row.action.slice(3) });
     else if (row.kind === "command") run("run_action", { action: row.action });
     else run("navigate", { input: row.url });
   };
@@ -710,12 +722,27 @@ function drawBookmarkMenu(data) {
   );
 }
 
+// QR code of the page, to open it on a phone (like Chrome's share menu).
+function drawQr(data) {
+  const qr = qrcode(0, "M");
+  qr.addData(data.url);
+  qr.make();
+  const box = el("div", { class: "qr-code", html: qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true }) });
+  root.className = "popup qr";
+  root.replaceChildren(
+    el("div", { class: "box-head", html: ICONS.qr }, [el("span", { class: "label", text: "Telefonla tara" })]),
+    box,
+    el("div", { class: "card-url", text: shortUrl(data.url) }),
+  );
+}
+
 function drawToast(data) {
   root.className = "popup toast";
   root.replaceChildren(el("span", { class: "label", text: data.text }));
 }
 
 const DRAW = {
+  qr: drawQr,
   "bookmark-menu": drawBookmarkMenu,
   media: drawMedia,
   "group-menu": drawGroupMenu,

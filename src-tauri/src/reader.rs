@@ -57,6 +57,7 @@ const READER_SCRIPT: &str = r#"(() => {
     <div class="bar">
       <button data-act="smaller" title="Yazıyı küçült">A−</button>
       <button data-act="bigger" title="Yazıyı büyüt">A+</button>
+      <button data-act="speak" title="Sesli oku">▶ Sesli oku</button>
       <button data-act="theme" title="Açık / koyu">◐</button>
       <button data-act="close" title="Okuma görünümünü kapat">Kapat</button>
     </div>
@@ -72,7 +73,25 @@ const READER_SCRIPT: &str = r#"(() => {
     if (act === "bigger") size = Math.min(30, size + 2);
     if (act === "smaller") size = Math.max(14, size - 2);
     if (act === "theme") root.toggleAttribute("data-dark");
-    if (act === "close") { root.remove(); document.documentElement.style.overflow = ""; return; }
+    if (act === "close") { speechSynthesis.cancel(); root.remove(); document.documentElement.style.overflow = ""; return; }
+    if (act === "speak") {
+      const button = event.target.closest("button");
+      if (speechSynthesis.speaking) { speechSynthesis.cancel(); button.textContent = "▶ Sesli oku"; return; }
+      const text = shadow.querySelector("h1").textContent + ". " + shadow.querySelector(".body").innerText;
+      const lang = (document.documentElement.lang || "tr").slice(0, 2);
+      const voice = speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang));
+      // Speak in pieces: long texts are cut off otherwise.
+      const parts = text.match(/[^.!?\n]{1,220}[.!?\n]?/g) || [text];
+      parts.forEach((part, i) => {
+        const say = new SpeechSynthesisUtterance(part);
+        if (voice) say.voice = voice;
+        say.lang = voice ? voice.lang : lang;
+        if (i === parts.length - 1) say.onend = () => { button.textContent = "▶ Sesli oku"; };
+        speechSynthesis.speak(say);
+      });
+      button.textContent = "■ Durdur";
+      return;
+    }
     shadow.querySelector("article").style.setProperty("--size", size + "px");
   });
   document.documentElement.style.overflow = "hidden";

@@ -1683,6 +1683,17 @@ function showToast(text) {
 }
 listenHere("toast", (payload) => showToast(payload.text));
 
+// QR code of the page, from the site info button's neighbour: the palette.
+function showQr() {
+  const tab = activeTab();
+  if (!tab || !tab.url) return;
+  const page = pageRect();
+  openPopup("qr", { url: tab.url }, { x: page.right - 272, y: page.top + 10, width: 260, height: 312 });
+}
+listenHere("toolbar-command", (payload) => {
+  if (payload.command === "qr") showQr();
+});
+
 // Game mode badge.
 listen("vertical-tabs", ({ payload }) => document.body.classList.toggle("vertical-tabs", payload));
 listen("game-mode", ({ payload }) => document.body.classList.toggle("game-mode", payload));

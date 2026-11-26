@@ -134,7 +134,7 @@ select {
 }
 select option { background: var(--menu); }
 select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.site-foot { display: flex; justify-content: flex-end; padding: 8px 4px 2px; margin-top: auto; }
+.site-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 4px 2px; margin-top: auto; }
 
 /* Address suggestions and palette rows. */
 .suggestions { padding: 6px; }
@@ -315,3 +315,11 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .media-site { color: var(--text-3); font-size: 12px; }
 .media-row .step { width: 32px; height: 32px; border-radius: 50%; }
 .card-preview { flex: none; width: calc(100% + 28px); height: 160px; margin: -12px -14px 8px; object-fit: cover; object-position: top; border-bottom: 1px solid var(--line); }
+
+/* QR code. */
+.popup.qr { align-items: center; padding-bottom: 12px; }
+.popup.qr .box-head { align-self: stretch; }
+.qr-code { width: 220px; height: 220px; padding: 8px; border-radius: 12px; background: #ffffff; }
+.qr-code svg { width: 100%; height: 100%; display: block; }
+.qr-code svg path, .qr-code svg rect[fill="black"] { fill: #111; }
+.popup.qr .card-url { margin-top: 8px; max-width: 100%; }
