@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for Raven's own interface (toolbar). Websites shown in the content area get no access.",
+  "windows": ["main"],
+  "webviews": ["ui"],
+  "permissions": ["core:default"]
+}
