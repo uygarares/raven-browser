@@ -1522,6 +1522,81 @@ listen("bookmarks", () => {
 
 // Default browser.
 const defaultButton = document.getElementById("default-browser");
+// Safety check, like Chrome's: version, shield, secure connections, engine.
+document.getElementById("safety-check").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const box = document.getElementById("safety-results");
+  button.disabled = true;
+  button.textContent = "Kontrol ediliyor…";
+  const results = [];
+  const add = (ok, title, note, fix) => results.push({ ok, title, note, fix });
+  // 1. Raven's version.
+  try {
+    const current = await window.__TAURI__.app.getVersion();
+    const response = await fetch("https://api.github.com/repos/uygarares/raven-browser/releases/latest");
+    const latest = response.ok ? String((await response.json()).tag_name || "").replace(/^v/, "") : "";
+    if (latest && latest !== current && latest.localeCompare(current, undefined, { numeric: true }) > 0) {
+      add(false, `Raven ${latest} çıktı`, `Sende ${current} var`, { label: "İndir", run: () => run("open_url", { url: "https://github.com/uygarares/raven-browser/releases/latest", newTab: true }) });
+    } else {
+      add(true, "Raven güncel", `Sürüm ${current}`);
+    }
+  } catch {
+    add(false, "Raven sürümü kontrol edilemedi", "İnternet bağlantını kontrol et");
+  }
+  // 2. Shield.
+  const shield = await run("get_shield");
+  if (!settings.shield) {
+    add(false, "Raven Kalkanı kapalı", "Reklamlar ve izleyiciler engellenmiyor", { label: "Aç", run: () => saveSettings({ shield: true }) });
+  } else if (shield?.error) {
+    add(false, "Engelleme listeleri indirilemedi", shield.error, { label: "Tekrar dene", run: () => run("update_shield_lists") });
+  } else {
+    add(true, "Raven Kalkanı açık", `${(shield?.total || 0).toLocaleString("tr-TR")} reklam ve izleyici engellendi`);
+  }
+  // 3. Secure connections.
+  if (!settings.httpsUpgrade) {
+    add(false, "Güvenli bağlantı zorunlu değil", "Bazı siteler şifresiz (http) açılabilir", { label: "Aç", run: () => saveSettings({ httpsUpgrade: true }) });
+  } else {
+    add(true, "Siteler güvenli bağlantıyla açılıyor", "http:// adresleri https:// olur");
+  }
+  // 4. The engine (Microsoft Edge WebView2), updated by Windows.
+  const engine = await run("get_engine_version");
+  add(true, "Tarayıcı motoru Windows ile güncelleniyor", engine ? `Microsoft Edge WebView2 ${engine}. SmartScreen zararlı siteleri ve dosyaları engeller` : "Microsoft Edge WebView2");
+  box.replaceChildren(
+    ...results.map((item) => {
+      const row = document.createElement("div");
+      row.className = `safety-row ${item.ok ? "ok" : "warn"}`;
+      row.innerHTML = item.ok
+        ? '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.5L16 9.5"/></svg>'
+        : '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.01"/></svg>';
+      const text = document.createElement("span");
+      text.className = "safety-text";
+      const title = document.createElement("span");
+      title.className = "setting-name";
+      title.textContent = item.title;
+      const note = document.createElement("span");
+      note.className = "setting-note";
+      note.textContent = item.note;
+      text.append(title, note);
+      row.append(text);
+      if (item.fix) {
+        const fix = document.createElement("button");
+        fix.className = "secondary small";
+        fix.textContent = item.fix.label;
+        fix.addEventListener("click", async () => {
+          await item.fix.run();
+          fix.disabled = true;
+          fix.textContent = "Tamam";
+        });
+        row.append(fix);
+      }
+      return row;
+    }),
+  );
+  box.hidden = false;
+  button.disabled = false;
+  button.textContent = "Tekrar kontrol et";
+});
+
 async function showDefault() {
   const yes = await run("is_default_browser");
   defaultButton.hidden = Boolean(yes);

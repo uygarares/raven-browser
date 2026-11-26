@@ -127,6 +127,7 @@
       <a href="#set-sync">Senkronizasyon</a>
       <a href="#set-backup">Yedekle</a>
       <a href="#set-default">Varsayılan tarayıcı</a>
+      <a href="#set-keys">Kısayollar</a>
       <a href="#set-about">Hakkında</a>
     </nav>
     <div class="panel-inner">
@@ -213,6 +214,11 @@
 
       <section id="set-shield" class="settings-group">
         <h2>Gizlilik ve güvenlik</h2>
+        <div class="setting safety">
+          <span><span class="setting-name">Güvenlik kontrolü</span><span class="setting-note">Raven'ın güncel ve korumaların açık olduğuna bakar</span></span>
+          <button id="safety-check" class="primary">Kontrol et</button>
+        </div>
+        <div id="safety-results" class="safety-results" hidden></div>
         <label class="setting">
           <span><span class="setting-name">Raven Kalkanı</span><span class="setting-note">Reklamları, izleyicileri ve bağlantılardaki takip kodlarını engeller. Sayfalar daha hızlı açılır</span></span>
           <input type="checkbox" role="switch" class="switch" data-setting="shield">
@@ -353,6 +359,50 @@
         </div>
       </section>
 
+      <section id="set-keys" class="settings-group">
+        <h2>Klavye kısayolları</h2>
+        <div class="keys-grid">
+          <div class="keys-col">
+            <h3>Sekmeler</h3>
+            <div class="key-row"><span class="key-what">Yeni sekme</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>T</kbd></span></div>
+            <div class="key-row"><span class="key-what">Sekmeyi kapat</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>W</kbd></span></div>
+            <div class="key-row"><span class="key-what">Kapatılan sekmeyi geri aç</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd></span></div>
+            <div class="key-row"><span class="key-what">Sonraki sekme</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Tab</kbd></span></div>
+            <div class="key-row"><span class="key-what">Önceki sekme</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Tab</kbd></span></div>
+            <div class="key-row"><span class="key-what">O sıradaki sekme</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>1…8</kbd></span></div>
+            <div class="key-row"><span class="key-what">Son sekme</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>9</kbd></span></div>
+            <div class="key-row"><span class="key-what">Açık sekmelerde ara</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>A</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yeni pencere</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>N</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yeni gizli pencere</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>N</kbd></span></div>
+          </div>
+          <div class="keys-col">
+            <h3>Sayfa</h3>
+            <div class="key-row"><span class="key-what">Adres çubuğuna git</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>L</kbd></span></div>
+            <div class="key-row"><span class="key-what">Sayfada bul</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>F</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yer imlerine ekle</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>D</kbd></span></div>
+            <div class="key-row"><span class="key-what">Sayfayı kaydet</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>S</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yazdır</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>P</kbd></span></div>
+            <div class="key-row"><span class="key-what">Sayfa kaynağı</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>U</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yakınlaştır / uzaklaştır</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>+</kbd><span class="kbd-plus">/</span><kbd>Ctrl</kbd><kbd>−</kbd></span></div>
+            <div class="key-row"><span class="key-what">Normal boyut</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>0</kbd></span></div>
+            <div class="key-row"><span class="key-what">Tam ekran</span><span class="key-keys"><kbd>F11</kbd></span></div>
+            <div class="key-row"><span class="key-what">Geliştirici araçları</span><span class="key-keys"><kbd>F12</kbd></span></div>
+          </div>
+          <div class="keys-col">
+            <h3>Raven</h3>
+            <div class="key-row"><span class="key-what">Her şeyi ara (komutlar, sekmeler, geçmiş)</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>K</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yapay zeka paneli</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Space</kbd></span></div>
+            <div class="key-row"><span class="key-what">Ekran görüntüsü</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span></div>
+            <div class="key-row"><span class="key-what">Geçmiş</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>H</kbd></span></div>
+            <div class="key-row"><span class="key-what">İndirmeler</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>J</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yer imleri</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd></span></div>
+            <div class="key-row"><span class="key-what">Yer imleri çubuğu</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd></span></div>
+            <div class="key-row"><span class="key-what">Tarama verilerini sil</span><span class="key-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Delete</kbd></span></div>
+            <div class="key-row"><span class="key-what">Adresi yeni sekmede aç</span><span class="key-keys"><kbd>Alt</kbd><kbd>Enter</kbd></span></div>
+            <div class="key-row"><span class="key-what">Adres çubuğundan yapay zekaya sor</span><span class="key-keys"><kbd>?</kbd><span class="kbd-plus">soru</span></span></div>
+          </div>
+        </div>
+      </section>
       <section id="set-about" class="settings-group">
         <h2>Hakkında</h2>
         <div class="setting">

@@ -79,6 +79,7 @@ pub fn run() {
             settings::get_search_engines,
             settings::clear_browsing_data,
             settings::clear_data,
+            settings::get_engine_version,
             tabs::get_closed_tabs,
             permissions::get_forget_site,
             permissions::set_forget_site,

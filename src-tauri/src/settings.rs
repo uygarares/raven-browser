@@ -236,6 +236,12 @@ pub async fn get_search_engines() -> Vec<Engine> {
     SEARCH_ENGINES.iter().map(|(id, name, url)| Engine { id, name, url }).collect()
 }
 
+/// The version of Microsoft Edge WebView2 that shows the pages.
+#[tauri::command]
+pub async fn get_engine_version() -> Option<String> {
+    tauri::webview_version().ok()
+}
+
 /// "Tarama verilerini sil" (Ctrl+Shift+Delete): what, and since how many hours (0 = all).
 #[tauri::command]
 pub async fn clear_data(app: AppHandle, history: bool, kinds: crate::native::ClearKinds, hours: u32) -> Result<(), String> {
