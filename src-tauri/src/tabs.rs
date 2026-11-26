@@ -124,6 +124,7 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
     let on_title = app.clone();
     let on_popup = app.clone();
     let builder = WebviewBuilder::new(label(id), WebviewUrl::External(url))
+        .background_color(crate::BACKGROUND)
         .on_page_load(move |_webview, payload| {
             let loading = matches!(payload.event(), PageLoadEvent::Started);
             let url = payload.url().to_string();
@@ -217,12 +218,14 @@ pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
         return Ok(());
     };
 
-    if let Some(webview) = app.get_webview(&label(id)) {
-        webview.close().map_err(|e| e.to_string())?;
-    }
-
     match next {
-        Some(next) => show_only(app, next),
+        // Show the next tab first, then close this one, so nothing flashes in between.
+        Some(next) => {
+            show_only(app, next);
+            if let Some(webview) = app.get_webview(&label(id)) {
+                webview.close().map_err(|e| e.to_string())?;
+            }
+        }
         None => {
             if let Some(window) = app.get_window("main") {
                 window.close().map_err(|e| e.to_string())?;

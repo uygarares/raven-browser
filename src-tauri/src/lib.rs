@@ -13,6 +13,10 @@ use tauri::{window::WindowBuilder, LogicalPosition, LogicalSize, Manager, Window
 /// Height of the toolbar, in logical pixels. Must match `--toolbar-height` in ui/style.css.
 pub const TOOLBAR_HEIGHT: f64 = 84.0;
 
+/// Raven's dark background. Shown for a moment before a page draws itself,
+/// instead of a white flash.
+pub const BACKGROUND: tauri::window::Color = tauri::window::Color(11, 13, 26, 255);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -39,6 +43,7 @@ pub fn run() {
                 // No Windows title bar: Raven's toolbar has its own window buttons.
                 .decorations(false)
                 .shadow(true)
+                .background_color(BACKGROUND)
                 .build()?;
 
             // Raven's toolbar.
