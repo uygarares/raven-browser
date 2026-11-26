@@ -5,6 +5,7 @@
 
 mod bookmarks;
 mod downloads;
+mod extensions;
 mod history;
 mod media;
 mod permissions;
@@ -58,6 +59,12 @@ pub fn run() {
             permissions::set_site_permission,
             permissions::reset_site_permissions,
             suggest::get_suggestions,
+            extensions::get_extensions,
+            extensions::install_extension,
+            extensions::set_extension_enabled,
+            extensions::remove_extension,
+            extensions::open_extension_options,
+            extensions::open_extension_store,
             windows::get_window_info,
             windows::set_full_window_command,
             windows::open_popup_command,
@@ -77,6 +84,7 @@ pub fn run() {
             app.manage(downloads::load(handle));
             app.manage(zoom::load(handle));
             app.manage(permissions::load(handle));
+            app.manage(extensions::load(handle));
             history::start_saving(handle);
             let last_session = session::load(handle);
             bookmarks::refresh_bar(handle);
@@ -90,6 +98,7 @@ pub fn run() {
                     windows::open_window(handle, false, Some(saved))?;
                 }
             }
+            extensions::start(handle);
             Ok(())
         })
         .build(tauri::generate_context!())

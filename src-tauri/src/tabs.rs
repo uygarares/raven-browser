@@ -13,7 +13,7 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webview, WebviewUrl,
 };
 
-use crate::{downloads, history, media, permissions, session, settings, windows, zoom};
+use crate::{downloads, extensions, history, media, permissions, session, settings, windows, zoom};
 
 pub const HOME_URL: &str = "https://www.google.com";
 /// Opens Raven's own new tab page (ui/newtab.html).
@@ -246,7 +246,7 @@ pub fn to_url(input: &str, search_url: &str) -> Result<Url, String> {
     if text.is_empty() {
         return HOME_URL.parse().map_err(|e| format!("{e}"));
     }
-    if text.starts_with("http://") || text.starts_with("https://") {
+    if text.starts_with("http://") || text.starts_with("https://") || text.starts_with("chrome-extension://") {
         return text.parse().map_err(|e| format!("{e}"));
     }
     if text.contains('.') && !text.contains(' ') {
@@ -345,13 +345,27 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     let on_link = app.clone();
     let on_download = app.clone();
     let on_permission = app.clone();
-    let builder = WebviewBuilder::new(label(id), target)
+    let builder = extensions::allow(WebviewBuilder::new(label(id), target))
         .background_color(background_for(&url))
         // Private windows use WebView2's InPrivate mode.
         .incognito(private)
         .initialization_script(LINK_SCRIPT)
+        .initialization_script(extensions::STORE_SCRIPT)
         .on_navigation(move |url| {
             if let Some(action) = url.as_str().strip_prefix(ACTION_PREFIX) {
+                // "Raven'a ekle" on a Chrome Web Store page.
+                if let Some(store_id) = action.strip_prefix("install-extension:") {
+                    let app = on_link.clone();
+                    let store_id = store_id.to_string();
+                    tauri::async_runtime::spawn(async move {
+                        let title = with_tabs(&app, |list| list.info.get(&id).map(|t| t.title.clone()));
+                        if let (Some(tab), Some(window)) = (app.get_webview(&label(id)), window_of_tab(&app, id)) {
+                            let title = title.unwrap_or_default();
+                            extensions::request_from_store(&app, &tab, &window, &title, &store_id);
+                        }
+                    });
+                    return false;
+                }
                 let direction = match action {
                     "zoom-in" => 1,
                     "zoom-out" => -1,
@@ -597,7 +611,7 @@ pub fn open_here(app: &AppHandle, window: &str, url: &str) -> Result<(), String>
     active_tab(app, window)?.navigate(url).map_err(|e| e.to_string())
 }
 
-/// Closes a tab. Closing the last tab of a window closes the window, like other browsers.
+/// Closes a tab. Closing the last tab of a window leaves a new tab page.
 pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
     // The window's last tab: instead of closing the window, go to a new tab
     // page. If it already is one, nothing happens.

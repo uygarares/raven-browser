@@ -375,6 +375,51 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
 
 .panel-note { margin: 8px 0 0; color: var(--text-3); font-size: 13px; }
 
+/* Extensions */
+.primary {
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #0b0d14;
+  font: 500 13px var(--font);
+  transition: filter 150ms var(--ease);
+}
+.primary:hover { filter: brightness(1.1); }
+.primary:disabled { opacity: 0.5; }
+.extension-form { display: flex; gap: 8px; margin-top: 20px; }
+.extension-form .panel-search { flex: 1; margin: 0; }
+.extension-form .primary { height: 40px; }
+.extension-status { min-height: 18px; margin: 8px 0 0; color: var(--text-2); font-size: 13px; }
+.extension-status.error { color: var(--danger); }
+.extension-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 12px 12px 12px 16px;
+  border-radius: 12px;
+  background: rgba(160, 127, 224, 0.12);
+  border: 1px solid rgba(160, 127, 224, 0.3);
+}
+.extension-confirm span { flex: 1; min-width: 0; }
+.extensions-list { margin-top: 16px; display: flex; flex-direction: column; gap: 4px; }
+.extension-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--tile);
+}
+.extension-icon { flex: none; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: rgba(238, 240, 245, 0.08); color: var(--text-2); overflow: hidden; }
+.extension-icon img { width: 100%; height: 100%; object-fit: contain; }
+.extension-text { flex: 1; min-width: 0; }
+.extension-name { font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.extension-meta { margin-top: 2px; font-size: 12px; color: var(--text-3); }
+.extension-row.off .extension-name, .extension-row.off .extension-icon { opacity: 0.5; }
+
 .secondary.small { height: 28px; padding: 0 10px; font-size: 12px; }
 
 /* Downloads */

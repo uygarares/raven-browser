@@ -97,7 +97,7 @@ function activeTab() {
 
 // The ⋮ menu: new tab, new windows, zoom, history, downloads, bookmarks bar, settings.
 const MENU_WIDTH = 328;
-const MENU_HEIGHT = 8 * 36 + 3 * 9 + 14;
+const MENU_HEIGHT = 9 * 36 + 3 * 9 + 14;
 popupButton(document.getElementById("menu-button"), "menu", (rect) => {
   const tab = activeTab();
   const page = Boolean(tab && tab.url !== "");
@@ -632,6 +632,7 @@ const panels = {
   history: { el: historyPanel, load: loadHistory, focus: historySearch },
   downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
   settings: { el: document.getElementById("settings-panel"), load: loadSettings },
+  extensions: { el: document.getElementById("extensions-panel"), load: loadExtensions },
 };
 let openPanelName = null;
 
@@ -671,6 +672,10 @@ document.querySelectorAll(".panel-close").forEach((button) => button.addEventLis
 listenHere("open-history", () => openPanel("history"));
 listenHere("open-downloads", () => openPanel("downloads"));
 listenHere("open-settings", () => openPanel("settings"));
+listenHere("open-extensions", (payload) => {
+  openPanel("extensions");
+  if (payload.install) askToInstall(payload.install);
+});
 
 // Using the tabs or the address bar closes the panel.
 tabsEl.addEventListener("mousedown", closePanel);
@@ -878,6 +883,157 @@ document.getElementById("settings-github").addEventListener("click", () => {
 });
 
 loadSettings();
+
+// Extensions
+
+const extensionsList = document.getElementById("extensions-list");
+const extensionsEmpty = document.getElementById("extensions-empty");
+const extensionStatus = document.getElementById("extension-status");
+const extensionLink = document.getElementById("extension-link");
+const extensionAdd = document.getElementById("extension-add");
+const confirmBox = document.getElementById("extension-confirm");
+let pendingInstall = null;
+
+const PUZZLE_ICON =
+  '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M9 4h4v2.5a1.5 1.5 0 0 0 3 0V4h3a1 1 0 0 1 1 1v4h-2.5a1.5 1.5 0 0 0 0 3H20v7a1 1 0 0 1-1 1h-4v-2.5a1.5 1.5 0 0 0-3 0V20H5a1 1 0 0 1-1-1v-6h2.5a1.5 1.5 0 0 0 0-3H4V5a1 1 0 0 1 1-1z"/></svg>';
+
+function setExtensionStatus(text, error = false) {
+  extensionStatus.textContent = text;
+  extensionStatus.classList.toggle("error", error);
+}
+
+async function loadExtensions() {
+  let items = [];
+  try {
+    items = await invoke("get_extensions");
+  } catch (error) {
+    setExtensionStatus(String(error), true);
+  }
+  extensionsEmpty.hidden = items.length > 0;
+  extensionsList.replaceChildren(
+    ...items.map((item) => {
+      const row = document.createElement("div");
+      row.className = "extension-row";
+      row.classList.toggle("off", !item.enabled);
+
+      const icon = document.createElement("span");
+      icon.className = "extension-icon";
+      if (item.icon) {
+        const img = document.createElement("img");
+        img.src = item.icon;
+        img.alt = "";
+        icon.append(img);
+      } else {
+        icon.innerHTML = PUZZLE_ICON;
+      }
+
+      const text = document.createElement("div");
+      text.className = "extension-text";
+      const name = document.createElement("div");
+      name.className = "extension-name";
+      name.textContent = item.name || item.id;
+      const meta = document.createElement("div");
+      meta.className = "extension-meta";
+      meta.textContent = item.adblock ? "Reklam engelleyici" : item.enabled ? "Açık" : "Kapalı";
+      text.append(name, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "download-actions";
+      if (item.hasOptions) {
+        actions.append(smallButton("Ayarlar", () => {
+          closePanel();
+          run("open_extension_options", { id: item.id });
+        }));
+      }
+      actions.append(smallButton("Kaldır", async (event) => {
+        const button = event.currentTarget;
+        if (button.dataset.confirm !== "yes") {
+          button.dataset.confirm = "yes";
+          button.textContent = "Emin misin?";
+          setTimeout(() => {
+            button.dataset.confirm = "";
+            button.textContent = "Kaldır";
+          }, 3000);
+          return;
+        }
+        try {
+          await invoke("remove_extension", { id: item.id });
+        } catch (error) {
+          setExtensionStatus(String(error), true);
+        }
+      }));
+
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.className = "switch";
+      toggle.setAttribute("role", "switch");
+      toggle.setAttribute("aria-label", `${item.name} açık`);
+      toggle.checked = item.enabled;
+      toggle.addEventListener("change", async () => {
+        try {
+          await invoke("set_extension_enabled", { id: item.id, enabled: toggle.checked });
+        } catch (error) {
+          toggle.checked = !toggle.checked;
+          setExtensionStatus(String(error), true);
+        }
+      });
+
+      row.append(icon, text, actions, toggle);
+      return row;
+    }),
+  );
+}
+
+async function installExtension(input) {
+  extensionAdd.disabled = true;
+  setExtensionStatus("İndiriliyor…");
+  try {
+    await invoke("install_extension", { input });
+    extensionLink.value = "";
+    setExtensionStatus("Eklendi");
+  } catch (error) {
+    setExtensionStatus(String(error), true);
+  } finally {
+    extensionAdd.disabled = false;
+  }
+}
+
+/// "Raven'a ekle" on a store page: ask before adding.
+function askToInstall(request) {
+  pendingInstall = request;
+  document.getElementById("extension-confirm-text").textContent =
+    `“${request.title || "Bu uzantı"}” Raven'a eklensin mi?`;
+  confirmBox.hidden = false;
+  document.getElementById("extension-confirm-yes").focus();
+}
+
+document.getElementById("extension-confirm-yes").addEventListener("click", () => {
+  confirmBox.hidden = true;
+  if (pendingInstall) installExtension(pendingInstall.storeId);
+  pendingInstall = null;
+});
+document.getElementById("extension-confirm-no").addEventListener("click", () => {
+  confirmBox.hidden = true;
+  pendingInstall = null;
+});
+
+document.getElementById("extension-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (extensionLink.value.trim()) installExtension(extensionLink.value);
+});
+document.getElementById("extensions-store").addEventListener("click", () => {
+  closePanel();
+  run("open_extension_store");
+});
+
+listen("extension-install", ({ payload }) => {
+  if (openPanelName !== "extensions") return;
+  if (payload.state === "downloading") setExtensionStatus("İndiriliyor…");
+  if (payload.state === "adding") setExtensionStatus("Ekleniyor…");
+});
+listen("extensions-changed", () => {
+  if (openPanelName === "extensions") loadExtensions();
+});
 
 // Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
 // catches them itself (src-tauri/src/shortcuts.rs); these cover the toolbar.

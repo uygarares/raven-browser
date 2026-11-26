@@ -27,6 +27,7 @@ pub enum Action {
     OpenHistory,
     OpenDownloads,
     OpenSettings,
+    OpenExtensions,
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -113,6 +114,10 @@ pub fn perform(app: &AppHandle, window: String, action: Action) {
             }
             Action::OpenSettings => {
                 tell_toolbar(&app, window, "open-settings");
+                Ok(())
+            }
+            Action::OpenExtensions => {
+                tell_toolbar(&app, window, "open-extensions");
                 Ok(())
             }
             Action::ZoomIn => tabs::zoom_active(&app, window, 1),

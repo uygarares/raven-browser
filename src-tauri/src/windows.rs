@@ -16,7 +16,7 @@ use tauri::{
     LogicalSize, Manager, Webview, WebviewUrl, WindowEvent,
 };
 
-use crate::{session, tabs};
+use crate::{extensions, session, tabs};
 
 /// Height of the tab row and address bar, in logical pixels.
 /// Must match `--toolbar-height` in ui/style.css.
@@ -138,9 +138,11 @@ fn make_popup(app: &AppHandle, window: &str, focus: bool) -> Result<Webview, Str
                 let _ = old.close();
             }
             let handle = app.get_window(window).ok_or("No window")?;
-            let builder = WebviewBuilder::new(&label, WebviewUrl::App("popup.html".into()))
-                .background_color(BACKGROUND)
-                .focused(focus);
+            let builder = extensions::allow(
+                WebviewBuilder::new(&label, WebviewUrl::App("popup.html".into()))
+                    .background_color(BACKGROUND)
+                    .focused(focus),
+            );
             let popup = handle
                 .add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(10.0, 10.0))
                 .map_err(|e| e.to_string())?;
@@ -208,8 +210,9 @@ pub fn open_window(
     }
     let window = builder.build()?;
 
-    let toolbar = WebviewBuilder::new(ui_label(&label), WebviewUrl::App("index.html".into()))
-        .background_color(BACKGROUND);
+    let toolbar = extensions::allow(
+        WebviewBuilder::new(ui_label(&label), WebviewUrl::App("index.html".into())).background_color(BACKGROUND),
+    );
     window.add_child(toolbar, LogicalPosition::new(0.0, 0.0), LogicalSize::new(width, toolbar_height()))?;
 
     match restore.filter(|saved| !saved.tabs.is_empty()) {

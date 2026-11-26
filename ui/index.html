@@ -170,6 +170,40 @@
     </div>
   </section>
 
+  <!-- Extensions panel. -->
+  <section id="extensions-panel" class="panel" aria-labelledby="extensions-title" hidden>
+    <div class="panel-inner">
+      <div class="panel-head">
+        <h1 id="extensions-title">Uzantılar</h1>
+        <button id="extensions-store" class="secondary">Chrome Web Mağazası</button>
+        <button class="icon-button panel-close" aria-label="Kapat (Esc)" title="Kapat (Esc)">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="panel-note">Mağazada bir uzantının sayfasını aç, sağ alttaki “Raven'a ekle” düğmesine bas. Ya da linkini buraya yapıştır</p>
+
+      <div id="extension-confirm" class="extension-confirm" hidden>
+        <span id="extension-confirm-text"></span>
+        <button id="extension-confirm-yes" class="primary">Ekle</button>
+        <button id="extension-confirm-no" class="secondary">Vazgeç</button>
+      </div>
+
+      <form id="extension-form" class="extension-form">
+        <label class="panel-search">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+          <span class="hidden">Uzantı linki</span>
+          <input id="extension-link" type="text" placeholder="Chrome Web Mağazası linki" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="extension-add" class="primary" type="submit">Ekle</button>
+      </form>
+      <p id="extension-status" class="extension-status" role="status"></p>
+
+      <div id="extensions-list" class="extensions-list"></div>
+      <p id="extensions-empty" class="empty" hidden>Henüz uzantı yok</p>
+      <p class="panel-note">Uzantıların araç çubuğu düğmesi henüz yok. Ayarlarını “Ayarlar” ile açabilirsin</p>
+    </div>
+  </section>
+
   <template id="tab-template">
     <div class="tab" role="tab">
       <span class="tab-icon" aria-hidden="true"></span>
