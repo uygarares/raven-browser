@@ -28,6 +28,28 @@
     <nav id="shortcuts" class="shortcuts" aria-label="Kısayollar"></nav>
   </main>
 
+  <!-- Customize this page. -->
+  <button id="customize" class="customize" aria-label="Bu sayfayı özelleştir" title="Özelleştir">
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    Özelleştir
+  </button>
+  <dialog id="custom" class="editor custom" aria-labelledby="custom-title">
+    <form method="dialog">
+      <h2 id="custom-title">Yeni sekmeyi özelleştir</h2>
+      <fieldset class="choice">
+        <legend>Arka plan</legend>
+        <label><input type="radio" name="bg" value="sky"> Gökyüzü</label>
+        <label><input type="radio" name="bg" value="plain"> Sade</label>
+        <label><input type="radio" name="bg" value="image"> Resim</label>
+      </fieldset>
+      <label class="file"><span>Bilgisayardan resim seç…</span><input id="custom-image" type="file" accept="image/*"></label>
+      <label class="row"><span>Saat ve tarih</span><input type="checkbox" class="switch" id="custom-clock"></label>
+      <label class="row"><span>Selamlama</span><input type="checkbox" class="switch" id="custom-greeting"></label>
+      <label class="row"><span>Kısayollar</span><input type="checkbox" class="switch" id="custom-shortcuts"></label>
+      <div class="editor-actions"><button class="primary">Tamam</button></div>
+    </form>
+  </dialog>
+
   <!-- Small menu on a shortcut: edit or remove. -->
   <div id="menu" class="menu" role="menu" hidden>
     <button id="menu-edit" role="menuitem">Düzenle</button>

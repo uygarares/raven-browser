@@ -218,3 +218,58 @@ render();
 addEventListener("storage", (event) => {
   if (event.key === "raven-top-sites" && !ownShortcuts()) render();
 });
+
+
+// Customize: background (sky, plain or your picture), clock, greeting, shortcuts.
+const custom = document.getElementById("custom");
+const look = { bg: "sky", image: null, clock: true, greeting: true, shortcuts: true, ...read("raven-newtab", {}) };
+
+function applyCustom() {
+  document.body.dataset.bg = look.bg === "image" && !look.image ? "sky" : look.bg;
+  document.body.style.backgroundImage = look.bg === "image" && look.image ? `url("${look.image}")` : "";
+  document.getElementById("clock").hidden = !look.clock;
+  document.getElementById("date").hidden = !look.clock;
+  greeting.hidden = !look.greeting;
+  list.hidden = !look.shortcuts;
+}
+function saveCustom() {
+  try {
+    localStorage.setItem("raven-newtab", JSON.stringify(look));
+  } catch {
+    // A picture too big for the page's storage: keep it for this page only.
+  }
+  applyCustom();
+}
+applyCustom();
+
+document.getElementById("customize").addEventListener("click", () => {
+  for (const radio of custom.querySelectorAll('input[name="bg"]')) radio.checked = radio.value === look.bg;
+  document.getElementById("custom-clock").checked = look.clock;
+  document.getElementById("custom-greeting").checked = look.greeting;
+  document.getElementById("custom-shortcuts").checked = look.shortcuts;
+  custom.showModal();
+});
+custom.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target.name === "bg") look.bg = target.value;
+  if (target.id === "custom-clock") look.clock = target.checked;
+  if (target.id === "custom-greeting") look.greeting = target.checked;
+  if (target.id === "custom-shortcuts") look.shortcuts = target.checked;
+  if (target.id === "custom-image" && target.files[0]) {
+    const file = target.files[0];
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Resim 4 MB'tan küçük olmalı");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      look.image = reader.result;
+      look.bg = "image";
+      for (const radio of custom.querySelectorAll('input[name="bg"]')) radio.checked = radio.value === "image";
+      saveCustom();
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
+  saveCustom();
+});

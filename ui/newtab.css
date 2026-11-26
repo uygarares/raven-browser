@@ -272,3 +272,57 @@ body.private .private-note { display: block; }
 @media (max-width: 680px) {
   .shortcuts { grid-template-columns: repeat(3, 104px); }
 }
+
+/* Customize. */
+body[data-bg="plain"] .sky { display: none; }
+body[data-bg="image"] { background-size: cover; background-position: center; background-attachment: fixed; }
+body[data-bg="image"] .sky { display: none; }
+body[data-bg="image"] .clock, body[data-bg="image"] .greeting, body[data-bg="image"] .date { text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5); }
+body[data-bg="image"] .clock { background: none; color: #ffffff; }
+body[data-bg="image"] .greeting, body[data-bg="image"] .date { color: rgba(255, 255, 255, 0.85); }
+[hidden] { display: none !important; }
+.customize {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink-2) 80%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text-2);
+  font: 700 13px var(--font);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 160ms var(--ease);
+}
+.customize:hover { opacity: 1; color: var(--text); }
+.custom form { gap: 14px; }
+.choice { display: flex; gap: 6px; margin: 0; padding: 0; border: 0; }
+.choice legend { margin-bottom: 8px; font-size: 13px; font-weight: 700; color: var(--text-2); }
+.choice label { flex: 1; display: flex !important; flex-direction: row !important; align-items: center; justify-content: center; gap: 6px; height: 38px; border-radius: 10px; background: var(--surface); color: var(--text) !important; cursor: pointer; }
+.choice label:has(input:checked) { background: var(--accent); color: var(--on-accent) !important; }
+.choice input { display: none; }
+.custom .row { display: flex !important; flex-direction: row !important; align-items: center; justify-content: space-between; color: var(--text) !important; }
+.custom .file input { font: 600 13px var(--font); color: var(--text-2); }
+.custom input.switch { height: 22px; width: 38px; padding: 0; border: 0; border-radius: 11px; }
+.custom .file input { display: none; }
+.custom .file span {
+  align-self: flex-start;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
