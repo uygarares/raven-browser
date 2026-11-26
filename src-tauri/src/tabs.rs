@@ -73,6 +73,21 @@ pub fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// http:// becomes https:// ("Her zaman güvenli bağlantı"), except for this
+/// computer and home networks, which often have no https.
+pub fn upgrade(mut url: Url) -> Url {
+    if url.scheme() != "http" {
+        return url;
+    }
+    let host = url.host_str().unwrap_or("");
+    let is_ip = host.parse::<std::net::IpAddr>().is_ok() || host.starts_with('[');
+    let local = is_ip || host == "localhost" || host.ends_with(".local") || !host.contains('.');
+    if !local {
+        let _ = url.set_scheme("https");
+    }
+    url
+}
+
 /// Seconds since 1970.
 pub fn now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -1173,6 +1188,7 @@ pub async fn open_url(app: AppHandle, webview: Webview, url: String, new_tab: bo
 #[tauri::command]
 pub async fn navigate(app: AppHandle, webview: Webview, input: String) -> Result<(), String> {
     let url = to_url(&input, &settings::search_url(&app))?;
+    let url = if app.state::<settings::SettingsState>().0.lock().unwrap().https_upgrade { upgrade(url) } else { url };
     active_tab(&app, &windows::window_of(&webview))?.navigate(url).map_err(|e| e.to_string())
 }
 
@@ -1205,6 +1221,16 @@ mod tests {
 
     fn to_url(input: &str) -> Result<tauri::Url, String> {
         super::to_url(input, GOOGLE)
+    }
+
+    #[test]
+    fn upgrades_to_https() {
+        let up = |u: &str| super::upgrade(u.parse().unwrap()).to_string();
+        assert_eq!(up("http://example.com/a"), "https://example.com/a");
+        assert_eq!(up("http://localhost:3000/"), "http://localhost:3000/");
+        assert_eq!(up("http://192.168.1.1/"), "http://192.168.1.1/");
+        assert_eq!(up("http://router/"), "http://router/");
+        assert_eq!(up("https://a.com/"), "https://a.com/");
     }
 
     #[test]
