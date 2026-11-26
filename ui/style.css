@@ -864,3 +864,8 @@ body.vertical-tabs .tab[data-color]:not([data-color=""])::before { left: -6px; r
 
 /* Split view: the tab shown at the right. */
 .tab.split { background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-line); }
+
+/* Downloads button: a moving arrow while something downloads. */
+#downloads.busy { color: var(--accent); }
+#downloads.busy svg path:first-child { animation: drop 1.1s ease-in-out infinite; }
+@keyframes drop { 0% { transform: translateY(-3px); opacity: 0.4; } 60% { transform: translateY(1px); opacity: 1; } 100% { transform: translateY(1px); opacity: 0.4; } }
