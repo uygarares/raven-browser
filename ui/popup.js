@@ -172,6 +172,7 @@ function drawTabMenu(data) {
     el("hr"),
     item("reload", "Yeniden yükle", "Ctrl+R", tab("reload")),
     item("copy", "Kopyasını aç", null, tab("duplicate")),
+    item("window", "Yeni pencereye taşı", null, tab("new-window"), { disabled: !data.others && !data.right && data.single }),
     item("pin", data.pinned ? "Sabitlemeyi kaldır" : "Sabitle", null, tab(data.pinned ? "unpin" : "pin")),
     item(data.muted ? "sound" : "muted", data.muted ? "Sitenin sesini aç" : "Siteyi sessize al", null, tab(data.muted ? "unmute" : "mute")),
     el("hr"),

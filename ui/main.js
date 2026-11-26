@@ -328,10 +328,10 @@ function openTabMenu(tab, event) {
   const groups = (state.groups || []).filter((group) => group.id !== tab.group);
   const groupRows = tab.pinned ? 0 : 1 + groups.length + (tab.group != null ? 1 : 0);
   const splitRow = state.split != null || tab.id !== state.active ? 1 : 0;
-  const height = (9 + groupRows + splitRow) * 32 + (tab.pinned ? 4 : 5) * 11 + 14;
+  const height = (10 + groupRows + splitRow) * 32 + (tab.pinned ? 4 : 5) * 11 + 14;
   openPopup(
     "tab-menu",
-    { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right, group: tab.group ?? null, groups, active: tab.id === state.active, split: state.split ?? null },
+    { id: tab.id, pinned: tab.pinned, muted: tab.muted, others, right, group: tab.group ?? null, groups, active: tab.id === state.active, split: state.split ?? null, single: state.tabs.length < 2 },
     { x: event.clientX, y: Math.min(event.clientY, window.innerHeight - height - 8), width: 300, height },
   );
 }

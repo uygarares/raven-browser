@@ -816,6 +816,54 @@ pub fn show_only(app: &AppHandle, id: u32) {
     publish(app, &window);
 }
 
+/// Moves a tab to a new window of its own (tab menu: "Yeni pencereye taşı").
+pub fn move_to_new_window(app: &AppHandle, id: u32) -> Result<(), String> {
+    let from = window_of_tab(app, id).ok_or("Tab not found")?;
+    if tab_ids(app, &from).len() < 2 {
+        return Err("Bu pencerede tek sekme var".into());
+    }
+    if windows::split_of(app, &from) == Some(id) {
+        windows::set_split(app, &from, None);
+    }
+    let private = windows::is_private(app, &from);
+    let to = windows::open_window(app, private, None).map_err(|e| e.to_string())?;
+    let placeholder = active_id(app, &to);
+    // Take the tab out of the old window, like closing it there.
+    let next = with_tabs(app, |list| {
+        let tabs = list.windows.get_mut(&from)?;
+        let index = tabs.order.iter().position(|t| *t == id)?;
+        tabs.order.remove(index);
+        let next = if tabs.active == Some(id) {
+            tabs.active = None;
+            tabs.order.get(index).or_else(|| tabs.order.last()).copied()
+        } else {
+            None
+        };
+        let info = list.info.get_mut(&id)?;
+        info.window = to.clone();
+        info.group = None;
+        info.pinned = false;
+        list.windows.get_mut(&to)?.order.push(id);
+        drop_empty_groups(list, &from);
+        Some(next)
+    })
+    .ok_or("Tab not found")?;
+    if let (Some(webview), Some(window)) = (app.get_webview(&label(id)), app.get_window(&to)) {
+        webview.reparent(&window).map_err(|e| e.to_string())?;
+    }
+    show_only(app, id);
+    if let Some(placeholder) = placeholder {
+        let _ = close(app, placeholder);
+    }
+    match next {
+        Some(next) => show_only(app, next),
+        None => publish(app, &from),
+    }
+    windows::layout(app, &from);
+    windows::layout(app, &to);
+    Ok(())
+}
+
 /// Shows `id` at the right of the active tab (split view), or ends split view.
 pub fn split_with(app: &AppHandle, id: u32, on: bool) -> Result<(), String> {
     let window = window_of_tab(app, id).ok_or("Tab not found")?;
@@ -1449,6 +1497,7 @@ pub async fn tab_action(app: AppHandle, id: u32, action: String) -> Result<(), S
         "close-others" => close_others(&app, id, false),
         "close-right" => close_others(&app, id, true),
         "split" => split_with(&app, id, true),
+        "new-window" => move_to_new_window(&app, id),
         "unsplit" => split_with(&app, id, false),
         "group-new" => set_group(&app, id, None, true),
         "ungroup" => set_group(&app, id, None, false),
