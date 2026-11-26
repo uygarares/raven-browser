@@ -50,7 +50,8 @@ pub fn run() {
             let toolbar = tauri::webview::WebviewBuilder::new(
                 "ui",
                 tauri::WebviewUrl::App("index.html".into()),
-            );
+            )
+            .background_color(BACKGROUND);
             window.add_child(
                 toolbar,
                 LogicalPosition::new(0.0, 0.0),
