@@ -29,7 +29,11 @@ struct TabList {
     info: HashMap<u32, TabInfo>,
     active: Option<u32>,
     next_id: u32,
+    /// Addresses of recently closed tabs, newest last (for Ctrl+Shift+T).
+    closed: Vec<String>,
 }
+
+const MAX_CLOSED: usize = 25;
 
 /// All open tabs, shared between Raven's commands and the tab webviews.
 #[derive(Default)]
@@ -149,6 +153,7 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
         LogicalPosition::new(0.0, TOOLBAR_HEIGHT),
         LogicalSize::new(size.width, (size.height - TOOLBAR_HEIGHT).max(0.0)),
     )?;
+    crate::shortcuts::listen_in_tab(app, &webview);
 
     if activate {
         show_only(app, id);
@@ -183,34 +188,22 @@ fn active_tab(app: &AppHandle) -> Result<Webview, String> {
         .ok_or_else(|| "No open tab".to_string())
 }
 
-// Commands called by the toolbar. They are async so that Windows can create
-// and close webviews without blocking the window.
-
-#[tauri::command]
-pub async fn get_tabs(app: AppHandle) -> TabsState {
-    snapshot(&app)
+/// Opens a tab and shows it.
+pub fn open_tab(app: &AppHandle, url: &str) -> Result<u32, String> {
+    create_tab(app, url, true).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn new_tab(app: AppHandle) -> Result<u32, String> {
-    create_tab(&app, HOME_URL, true).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn switch_tab(app: AppHandle, id: u32) -> Result<(), String> {
-    if app.get_webview(&label(id)).is_none() {
-        return Err("Tab not found".into());
-    }
-    show_only(&app, id);
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn close_tab(app: AppHandle, id: u32) -> Result<(), String> {
-    let next = with_tabs(&app, |list| {
+/// Closes a tab. Closing the last tab closes Raven, like other browsers.
+pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
+    let next = with_tabs(app, |list| {
         let index = list.order.iter().position(|t| *t == id)?;
         list.order.remove(index);
-        list.info.remove(&id);
+        if let Some(info) = list.info.remove(&id) {
+            list.closed.push(info.url);
+            if list.closed.len() > MAX_CLOSED {
+                list.closed.remove(0);
+            }
+        }
         if list.active == Some(id) {
             list.active = None;
             // Go to the tab on the right, or the one on the left if it was the last.
@@ -229,8 +222,7 @@ pub async fn close_tab(app: AppHandle, id: u32) -> Result<(), String> {
     }
 
     match next {
-        Some(next) => show_only(&app, next),
-        // Closing the last tab closes Raven, like other browsers.
+        Some(next) => show_only(app, next),
         None => {
             if let Some(window) = app.get_window("main") {
                 window.close().map_err(|e| e.to_string())?;
@@ -238,6 +230,82 @@ pub async fn close_tab(app: AppHandle, id: u32) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+pub fn close_active(app: &AppHandle) -> Result<(), String> {
+    match with_tabs(app, |list| list.active) {
+        Some(id) => close(app, id),
+        None => Ok(()),
+    }
+}
+
+/// Opens the most recently closed tab again.
+pub fn reopen_closed(app: &AppHandle) -> Result<(), String> {
+    match with_tabs(app, |list| list.closed.pop()) {
+        Some(url) => open_tab(app, &url).map(|_| ()),
+        None => Ok(()),
+    }
+}
+
+/// Moves to the next (+1) or previous (-1) tab, wrapping around.
+pub fn switch_relative(app: &AppHandle, step: isize) -> Result<(), String> {
+    let target = with_tabs(app, |list| {
+        let count = list.order.len() as isize;
+        if count == 0 {
+            return None;
+        }
+        let current = list
+            .active
+            .and_then(|id| list.order.iter().position(|t| *t == id))
+            .unwrap_or(0) as isize;
+        let index = (current + step).rem_euclid(count) as usize;
+        Some(list.order[index])
+    });
+    if let Some(id) = target {
+        show_only(app, id);
+    }
+    Ok(())
+}
+
+pub fn switch_to_index(app: &AppHandle, index: usize) -> Result<(), String> {
+    if let Some(id) = with_tabs(app, |list| list.order.get(index).copied()) {
+        show_only(app, id);
+    }
+    Ok(())
+}
+
+pub fn switch_to_last(app: &AppHandle) -> Result<(), String> {
+    if let Some(id) = with_tabs(app, |list| list.order.last().copied()) {
+        show_only(app, id);
+    }
+    Ok(())
+}
+
+// Commands called by the toolbar. They are async so that Windows can create
+// and close webviews without blocking the window.
+
+#[tauri::command]
+pub async fn get_tabs(app: AppHandle) -> TabsState {
+    snapshot(&app)
+}
+
+#[tauri::command]
+pub async fn new_tab(app: AppHandle) -> Result<u32, String> {
+    open_tab(&app, HOME_URL)
+}
+
+#[tauri::command]
+pub async fn switch_tab(app: AppHandle, id: u32) -> Result<(), String> {
+    if app.get_webview(&label(id)).is_none() {
+        return Err("Tab not found".into());
+    }
+    show_only(&app, id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn close_tab(app: AppHandle, id: u32) -> Result<(), String> {
+    close(&app, id)
 }
 
 #[tauri::command]

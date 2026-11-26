@@ -5,6 +5,7 @@
 //! - "tab-N": one per tab, showing a website. Only the active tab is visible.
 //!   Websites get no access to Raven's commands.
 
+mod shortcuts;
 mod tabs;
 
 use tauri::{window::WindowBuilder, LogicalPosition, LogicalSize, Manager, WindowEvent};
@@ -25,6 +26,7 @@ pub fn run() {
             tabs::go_back,
             tabs::go_forward,
             tabs::reload,
+            shortcuts::run_action,
         ])
         .setup(|app| {
             let width = 1280.0;

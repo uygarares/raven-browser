@@ -32,12 +32,7 @@ document.getElementById("address-form").addEventListener("submit", (event) => {
 address.addEventListener("focus", () => address.select());
 
 // Tabs
-async function openNewTab() {
-  await run("new_tab");
-  address.focus();
-}
-
-document.getElementById("new-tab").addEventListener("click", openNewTab);
+document.getElementById("new-tab").addEventListener("click", () => run("run_action", { action: "new-tab" }));
 
 function closeTab(id) {
   run("close_tab", { id });
@@ -86,18 +81,35 @@ invoke("get_tabs").then((payload) => {
   render();
 });
 
-// Keyboard shortcuts (while Raven's toolbar has focus)
-document.addEventListener("keydown", (event) => {
-  if (!event.ctrlKey) return;
+// Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
+// catches them itself (src-tauri/src/shortcuts.rs); these cover the toolbar.
+function actionFor(event) {
+  if (!event.ctrlKey || event.altKey) return null;
   const key = event.key.toLowerCase();
-  if (key === "t") {
-    event.preventDefault();
-    openNewTab();
-  } else if (key === "w" && state.active != null) {
-    event.preventDefault();
-    closeTab(state.active);
-  } else if (key === "l") {
-    event.preventDefault();
+  const shift = event.shiftKey;
+  if (key === "t") return shift ? "reopen-tab" : "new-tab";
+  if (shift) return key === "tab" ? "previous-tab" : null;
+  if (key === "w") return "close-tab";
+  if (key === "l") return "focus-address";
+  if (key === "tab" || key === "pagedown") return "next-tab";
+  if (key === "pageup") return "previous-tab";
+  if (key >= "1" && key <= "8") return { "go-to-tab": Number(key) - 1 };
+  if (key === "9") return "last-tab";
+  return null;
+}
+
+document.addEventListener("keydown", (event) => {
+  const action = actionFor(event);
+  if (!action) return;
+  event.preventDefault();
+  if (action === "focus-address") {
     address.focus();
+  } else {
+    run("run_action", { action });
   }
+});
+
+listen("focus-address", () => {
+  address.focus();
+  address.select();
 });
