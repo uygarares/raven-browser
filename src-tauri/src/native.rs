@@ -70,9 +70,14 @@ pub fn short(text: &str) -> String {
 
 /// Takes a PNG picture of what a tab shows. Call it off the main thread.
 pub fn screenshot(webview: &Webview) -> Result<Vec<u8>, String> {
+    screenshot_start(webview)?.recv_timeout(Duration::from_secs(10)).map_err(|_| "No answer".to_string())?
+}
+
+/// Starts taking the picture now (before the tab is hidden); the result comes later.
+pub fn screenshot_start(webview: &Webview) -> Result<mpsc::Receiver<Result<Vec<u8>, String>>, String> {
     let (tx, rx) = mpsc::channel();
     imp::screenshot(webview, tx)?;
-    rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "No answer".to_string())?
+    Ok(rx)
 }
 
 /// Opens WebView2's "Save as" window for the page (Ctrl+S).

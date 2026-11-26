@@ -750,6 +750,7 @@ pub fn create_tab_at(
 /// window. The new tab is shown before the others are hidden, so nothing
 /// flashes in between.
 pub fn show_only(app: &AppHandle, id: u32) {
+    let mut leaving: Option<u32> = None;
     // Choosing the right-hand tab of split view: the two swap sides.
     if let Some(window) = window_of_tab(app, id) {
         if windows::split_of(app, &window) == Some(id) {
@@ -767,6 +768,7 @@ pub fn show_only(app: &AppHandle, id: u32) {
         }
         let changed = tabs.active != Some(id);
         let previous = tabs.active.replace(id);
+        leaving = previous.filter(|p| *p != id);
         // The tab you leave starts its time in the background now.
         for seen in [previous, Some(id)].into_iter().flatten() {
             if let Some(info) = list.info.get_mut(&seen) {
@@ -784,6 +786,12 @@ pub fn show_only(app: &AppHandle, id: u32) {
     // Mark the tab active in the tab row before the page is shown.
     if changed {
         publish(app, &window);
+    }
+    // A picture of the tab you leave, for its hover card.
+    if let Some(old) = leaving.filter(|_| !windows::is_private(app, &window)) {
+        if let Some(webview) = app.get_webview(&label(old)) {
+            crate::previews::capture(app, &webview, old);
+        }
     }
     let target = match app.get_webview(&label(id)) {
         Some(webview) => Some(webview),
@@ -964,6 +972,7 @@ pub fn close(app: &AppHandle, id: u32) -> Result<(), String> {
     let Some((window, next)) = result else {
         return Ok(());
     };
+    crate::previews::forget(app, id);
     // Split view ends when one of its two tabs closes.
     if let Some(split) = windows::split_of(app, &window) {
         if split == id || next != active_id(app, &window) || Some(split) == next {

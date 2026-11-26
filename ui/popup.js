@@ -608,6 +608,7 @@ function drawTabCard(data) {
   if (data.audible) facts.push("Ses çalıyor");
   root.className = "popup card";
   root.replaceChildren(
+    ...(data.preview ? [el("img", { class: "card-preview", src: data.preview, alt: "" })] : []),
     el("div", { class: "card-title", text: data.title || "Yeni sekme" }),
     el("div", { class: "card-url", text: data.url ? shortUrl(data.url) : "Raven" }),
     el("div", { class: "card-facts" + (data.asleep ? " asleep" : ""), text: facts.join(" · ") || " " }),

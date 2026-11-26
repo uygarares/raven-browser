@@ -1571,18 +1571,22 @@ tabsEl.addEventListener("mouseover", (event) => {
   const id = Number(el.dataset.id);
   if (cardFor === id) return;
   clearTimeout(cardTimer);
-  cardTimer = setTimeout(() => {
+  cardTimer = setTimeout(async () => {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab || (popupKind && popupKind !== "tab-card")) return;
     cardFor = id;
+    // A picture of the page, taken when you last left the tab (not for the open one).
+    const preview = tab.id !== state.active && tab.url ? await run("get_tab_preview", { id }) : null;
+    if (cardFor !== id) return;
     const rect = el.getBoundingClientRect();
     const vertical = document.body.classList.contains("vertical-tabs");
+    const height = 92 + (preview ? 168 : 0);
     openPopup(
       "tab-card",
-      { title: tab.title, url: tab.url, memory: tab.memory, asleep: tab.asleep && tab.id !== state.active, audible: tab.audible },
+      { title: tab.title, url: tab.url, memory: tab.memory, asleep: tab.asleep && tab.id !== state.active, audible: tab.audible, preview },
       vertical
-        ? { x: rect.right + 10, y: rect.top - 4, width: 300, height: 92, focus: false }
-        : { x: Math.max(8, rect.left), y: rect.bottom + 6, width: 300, height: 92, focus: false },
+        ? { x: rect.right + 10, y: rect.top - 4, width: 300, height, focus: false }
+        : { x: Math.max(8, rect.left), y: rect.bottom + 6, width: 300, height, focus: false },
     );
   }, cardFor ? 80 : 550);
 });

@@ -17,6 +17,7 @@ mod import;
 mod media;
 mod native;
 mod perf;
+mod previews;
 mod permissions;
 mod reader;
 mod session;
@@ -52,6 +53,7 @@ pub fn run() {
         }))
         .manage(tabs::Tabs::default())
         .manage(windows::Windows::default())
+        .manage(previews::Previews::default())
         .invoke_handler(tauri::generate_handler![
             tabs::get_tabs,
             tabs::close_tab,
@@ -104,6 +106,7 @@ pub fn run() {
             perf::clear_archive,
             perf::get_memory,
             reader::toggle_reader,
+            previews::get_tab_preview,
             import::get_import_sources,
             import::import_browser,
             shield::get_shield,
