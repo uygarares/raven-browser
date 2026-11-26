@@ -950,6 +950,13 @@ listen("download-started", () => {
   downloadedThisSession = true;
 });
 listen("downloads", ({ payload }) => {
+  // A download that just finished: say so, like Chrome's download bubble.
+  for (const download of payload) {
+    const before = downloads.find((d) => d.id === download.id);
+    if (before && before.state === "in-progress" && download.state === "done") {
+      showToast(`İndirildi: ${download.fileName || download.file_name || "dosya"} (Ctrl + J)`);
+    }
+  }
   downloads = payload;
   renderDownloads();
 });
