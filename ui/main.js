@@ -1757,7 +1757,7 @@ async function checkForUpdate() {
   } catch {}
 }
 setTimeout(checkForUpdate, 15000);
-window.__TAURI__.app?.getVersion?.().then((version) => {
+window.__TAURI__.app?.getVersion?.()?.then((version) => {
   const name = document.querySelector("#set-about .setting-name");
   if (name) name.textContent = `Raven ${version}`;
 });
