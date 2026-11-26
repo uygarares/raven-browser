@@ -744,6 +744,7 @@ const panels = {
   downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
   settings: { el: document.getElementById("settings-panel"), load: () => { loadSettings(); showMemory(); loadImportSources(); showDefault(); } },
   archive: { el: document.getElementById("archive-panel"), load: loadArchive },
+  welcome: { el: document.getElementById("welcome-panel"), load: loadWelcome },
   bookmarks: { el: document.getElementById("bookmarks-panel"), load: loadBookmarksPage, focus: document.getElementById("bookmarks-search") },
   extensions: { el: document.getElementById("extensions-panel"), load: loadExtensions },
 };
@@ -970,6 +971,7 @@ async function loadSettings() {
   engines = engines || [];
   showSettings();
   rememberSearch();
+  maybeWelcome();
 }
 
 async function saveSettings(change) {
@@ -992,7 +994,9 @@ for (const el of document.querySelectorAll("[data-setting]")) {
   } else {
     el.addEventListener("click", (event) => {
       const option = event.target.closest("[data-value]");
-      if (option) saveSettings({ [name]: option.dataset.value });
+      if (!option) return;
+      if (name === "aiProvider") run("set_ai_provider", { provider: option.dataset.value }).then(loadSettings);
+      else saveSettings({ [name]: option.dataset.value });
     });
   }
 }
@@ -1019,6 +1023,52 @@ async function showMemory() {
   note.textContent = `${total} · ${info.awake} açık, ${info.asleep} uyuyan sekme`;
 }
 document.getElementById("memory-refresh").addEventListener("click", showMemory);
+
+// Welcome page on the first start (and when Raven gets a new one).
+const WELCOME_VERSION = 2;
+async function loadWelcome() {
+  const box = document.getElementById("welcome-import");
+  const status = document.getElementById("welcome-import-status");
+  const sources = (await run("get_import_sources")) || [];
+  box.replaceChildren(
+    ...sources.map((source) => {
+      const button = document.createElement("button");
+      button.className = "secondary";
+      button.textContent = source.name;
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        status.textContent = `${source.name} aktarılıyor…`;
+        try {
+          const result = await invoke("import_browser", { id: source.id });
+          status.textContent = `${source.name}: ${result.bookmarks} yer imi eklendi`;
+        } catch (error) {
+          status.textContent = String(error);
+          button.disabled = false;
+        }
+      });
+      return button;
+    }),
+  );
+  if (!sources.length) status.textContent = "Bu bilgisayarda başka tarayıcı bulunamadı";
+}
+document.getElementById("welcome-default").addEventListener("click", async (event) => {
+  try {
+    await invoke("make_default_browser");
+    event.currentTarget.textContent = "Windows penceresinde Raven'ı seç";
+  } catch (error) {
+    event.currentTarget.textContent = String(error);
+  }
+});
+document.getElementById("welcome-start").addEventListener("click", async () => {
+  await saveSettings({ welcome: WELCOME_VERSION });
+  closePanel();
+});
+let welcomeChecked = false;
+function maybeWelcome() {
+  if (welcomeChecked || !settings) return;
+  welcomeChecked = true;
+  if ((settings.welcome || 0) < WELCOME_VERSION && !document.body.classList.contains("private-window")) openPanel("welcome");
+}
 
 // Default browser.
 const defaultButton = document.getElementById("default-browser");

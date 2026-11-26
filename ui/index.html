@@ -296,6 +296,59 @@
     </div>
   </section>
 
+  <!-- Welcome, on the first start. -->
+  <section id="welcome-panel" class="panel welcome" aria-labelledby="welcome-title" hidden>
+    <div class="welcome-inner">
+      <img class="welcome-logo" src="logo.png" alt="">
+      <h1 id="welcome-title">Raven'a hoş geldin</h1>
+      <p class="welcome-lead">Hızlı, az RAM kullanan, reklamları kendisi engelleyen tarayıcın. Birkaç şeyi seç, sonra başla</p>
+
+      <div class="welcome-grid">
+        <section class="welcome-card">
+          <h2>Görünüm</h2>
+          <div class="segmented" role="radiogroup" aria-label="Tema" data-setting="appearance">
+            <button role="radio" data-value="dark">Koyu</button>
+            <button role="radio" data-value="light">Açık</button>
+            <button role="radio" data-value="system">Sistem</button>
+          </div>
+          <div class="swatches" role="radiogroup" aria-label="Vurgu rengi" data-setting="accent">
+            <button role="radio" data-value="violet" style="--swatch:#a184f7" aria-label="Mor"></button>
+            <button role="radio" data-value="blue" style="--swatch:#6d95ff" aria-label="Mavi"></button>
+            <button role="radio" data-value="teal" style="--swatch:#2fd0b8" aria-label="Turkuaz"></button>
+            <button role="radio" data-value="rose" style="--swatch:#ff7aa8" aria-label="Pembe"></button>
+            <button role="radio" data-value="amber" style="--swatch:#ffbe55" aria-label="Kehribar"></button>
+          </div>
+          <label class="welcome-row"><span>Sekmeler solda</span><input type="checkbox" role="switch" class="switch" data-setting="verticalTabs"></label>
+        </section>
+
+        <section class="welcome-card">
+          <h2>Eski tarayıcından taşı</h2>
+          <p>Yer imlerin Raven'a kopyalanır, eski tarayıcına dokunulmaz</p>
+          <div class="button-row start" id="welcome-import"></div>
+          <p id="welcome-import-status" class="welcome-status"></p>
+        </section>
+
+        <section class="welcome-card">
+          <h2>Yapay zeka</h2>
+          <p>Sağ üstteki “Sor” paneli açar. Kendi hesabınla bir kez giriş yaparsın</p>
+          <div class="segmented" role="radiogroup" aria-label="Yapay zeka" data-setting="aiProvider">
+            <button role="radio" data-value="claude">Claude</button>
+            <button role="radio" data-value="chatgpt">ChatGPT</button>
+            <button role="radio" data-value="gemini">Gemini</button>
+          </div>
+        </section>
+
+        <section class="welcome-card">
+          <h2>Varsayılan tarayıcı</h2>
+          <p>Başka programlarda tıkladığın linkler Raven'da açılsın</p>
+          <button id="welcome-default" class="secondary">Varsayılan yap</button>
+        </section>
+      </div>
+
+      <button id="welcome-start" class="primary welcome-start">Başla</button>
+    </div>
+  </section>
+
   <!-- Bookmarks page (Ctrl + Shift + O). -->
   <section id="bookmarks-panel" class="panel" aria-labelledby="bookmarks-title" hidden>
     <div class="panel-inner">

@@ -58,6 +58,8 @@ pub struct Settings {
     pub https_upgrade: bool,
     /// Tabs in a list at the left instead of a row on top.
     pub vertical_tabs: bool,
+    /// The welcome page version already seen (shown again when it changes).
+    pub welcome: u32,
 }
 
 /// Search engines Raven offers: id, name, and the address the words are added to.
@@ -103,6 +105,7 @@ impl Default for Settings {
             block_autoplay: false,
             https_upgrade: true,
             vertical_tabs: false,
+            welcome: 0,
         }
     }
 }

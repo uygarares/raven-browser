@@ -810,3 +810,30 @@ body.vertical-tabs .tab.pinned:has(.tab-audio:not([hidden])) { width: auto; min-
 }
 body.vertical-tabs .group-chip { align-self: flex-start; margin: 6px 0 2px 4px; }
 body.vertical-tabs .tab[data-color]:not([data-color=""])::before { left: -6px; right: auto; top: 8px; bottom: 8px; width: 3px; height: auto; }
+
+/* Welcome page. */
+.panel.welcome { display: grid; place-items: start center; background: transparent; box-shadow: none; }
+.panel.welcome::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--page-radius);
+  background:
+    radial-gradient(70% 60% at 20% 0%, color-mix(in srgb, var(--sheen-violet) 28%, transparent), transparent 70%),
+    radial-gradient(60% 60% at 90% 10%, color-mix(in srgb, var(--sheen-teal) 18%, transparent), transparent 70%),
+    var(--page);
+  z-index: -1;
+}
+.welcome-inner { position: relative; max-width: 860px; padding: 28px 32px 36px; text-align: center; }
+.welcome-logo { width: 60px; height: 60px; animation: welcome-in 600ms var(--spring); }
+@keyframes welcome-in { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } }
+.welcome h1 { margin: 10px 0 0; font: 800 40px/1.05 var(--font-display); letter-spacing: -0.03em; }
+.welcome-lead { margin: 12px auto 0; max-width: 520px; color: var(--text-2); font-size: 16px; line-height: 1.5; }
+.welcome-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; text-align: left; }
+.welcome-card { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 20px; border-radius: 18px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.welcome-card h2 { margin: 0; font: 800 16px var(--font); }
+.welcome-card p { margin: -4px 0 0; color: var(--text-3); font-size: 13px; line-height: 1.45; }
+.welcome-row { display: flex; align-items: center; gap: 12px; width: 100%; justify-content: space-between; font-weight: 700; }
+.welcome-status { min-height: 18px; color: var(--text-2) !important; }
+.button-row.start { justify-content: flex-start; }
+.welcome-start { height: 48px; margin-top: 20px; padding: 0 40px; border-radius: 14px; font-size: 15px; }
