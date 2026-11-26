@@ -1485,6 +1485,14 @@ pub async fn navigate(app: AppHandle, webview: Webview, input: String) -> Result
     active_tab(&app, &windows::window_of(&webview))?.navigate(url).map_err(|e| e.to_string())
 }
 
+/// What was typed in the address bar, opened in a new tab (Alt+Enter).
+#[tauri::command]
+pub async fn navigate_new_tab(app: AppHandle, webview: Webview, input: String) -> Result<(), String> {
+    let url = to_url(&input, &settings::search_url(&app))?;
+    let url = if app.state::<settings::SettingsState>().0.lock().unwrap().https_upgrade { upgrade(url) } else { url };
+    open_tab(&app, &windows::window_of(&webview), url.as_str()).map(|_| ())
+}
+
 #[tauri::command]
 pub async fn go_back(app: AppHandle, webview: Webview) -> Result<(), String> {
     active_tab(&app, &windows::window_of(&webview))?

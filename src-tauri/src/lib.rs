@@ -61,6 +61,7 @@ pub fn run() {
             tabs::media_command,
             tabs::open_url,
             tabs::navigate,
+            tabs::navigate_new_tab,
             tabs::go_back,
             tabs::go_forward,
             tabs::reload,

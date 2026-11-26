@@ -681,12 +681,25 @@ function emitPaused(id, paused) {
   window.__TAURI__.event.emit("media-paused", { window: WINDOW, id, paused });
 }
 
+// Right click on a bookmark in the bar.
+function drawBookmarkMenu(data) {
+  root.className = "popup compact";
+  root.replaceChildren(
+    item("plus", "Yeni sekmede aç", null, () => run("open_url", { url: data.url, newTab: true })),
+    item("split", "Burada aç", null, () => run("open_url", { url: data.url, newTab: false })),
+    el("hr"),
+    item("settings", "Düzenle", null, action("open-bookmarks")),
+    item("close", "Kaldır", null, () => run("remove_bookmark", { id: data.id })),
+  );
+}
+
 function drawToast(data) {
   root.className = "popup toast";
   root.replaceChildren(el("span", { class: "label", text: data.text }));
 }
 
 const DRAW = {
+  "bookmark-menu": drawBookmarkMenu,
   media: drawMedia,
   "group-menu": drawGroupMenu,
   toast: drawToast,

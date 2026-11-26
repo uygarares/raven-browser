@@ -256,6 +256,16 @@ address.addEventListener("input", async (event) => {
 });
 
 address.addEventListener("keydown", (event) => {
+  // Ctrl+Enter: "google" becomes www.google.com. Alt+Enter: open in a new tab.
+  if (event.key === "Enter" && (event.ctrlKey || event.altKey)) {
+    event.preventDefault();
+    let input = address.value.trim();
+    if (event.ctrlKey && input && !input.includes(".") && !input.includes(" ")) input = `www.${input}.com`;
+    closeSuggestions();
+    run(event.altKey ? "navigate_new_tab" : "navigate", { input });
+    address.blur();
+    return;
+  }
   if ((event.key === "ArrowDown" || event.key === "ArrowUp") && rows.length > 0) {
     event.preventDefault();
     const step = event.key === "ArrowDown" ? 1 : -1;
@@ -592,7 +602,7 @@ function renderBookmarks() {
     ...bookmarks.map((bookmark) => {
       const button = document.createElement("button");
       button.className = "bookmark";
-      button.title = `${bookmark.title}\n${bookmark.url}\nSağ tık: kaldır`;
+      button.title = `${bookmark.title}\n${bookmark.url}`;
       const mark = document.createElement("span");
       mark.className = "mark-small";
       mark.setAttribute("aria-hidden", "true");
@@ -610,7 +620,7 @@ function renderBookmarks() {
       });
       button.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        run("remove_bookmark", { id: bookmark.id });
+        openPopup("bookmark-menu", bookmark, { x: event.clientX, y: event.clientY, width: 240, height: 4 * 32 + 11 + 14 });
       });
       return button;
     }),
