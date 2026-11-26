@@ -131,7 +131,7 @@ function renderBookmarks() {
       title.textContent = bookmark.title;
       button.append(mark, title);
       button.addEventListener("click", (event) => {
-        closeHistory();
+        closePanel();
         run("open_url", { url: bookmark.url, newTab: event.ctrlKey });
       });
       button.addEventListener("auxclick", (event) => {
@@ -244,7 +244,7 @@ async function loadHistory() {
     host.textContent = hostOf(entry.url);
     link.append(mark, title, host);
     link.addEventListener("click", (event) => {
-      closeHistory();
+      closePanel();
       run("open_url", { url: entry.url, newTab: event.ctrlKey });
     });
     link.addEventListener("auxclick", (event) => {
@@ -291,39 +291,251 @@ historyClear.addEventListener("click", async () => {
   loadHistory();
 });
 
-function historyOpen() {
-  return !historyPanel.hidden;
+// Full-window panels: history, downloads and settings. One is open at a time;
+// the tab row and address bar stay usable above it.
+
+const panels = {
+  history: { el: historyPanel, button: document.getElementById("history"), load: loadHistory, focus: historySearch },
+  downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
+  settings: { el: document.getElementById("settings-panel"), button: document.getElementById("settings"), load: loadSettings },
+};
+let openPanelName = null;
+
+async function openPanel(name) {
+  const panel = panels[name];
+  if (openPanelName === name) return;
+  const wasOpen = openPanelName !== null;
+  for (const [other, item] of Object.entries(panels)) {
+    item.el.hidden = other !== name;
+    item.button.setAttribute("aria-pressed", String(other === name));
+  }
+  openPanelName = name;
+  if (!wasOpen) await run("set_full_window", { open: true });
+  await panel.load();
+  if (panel.focus) panel.focus.focus();
 }
 
-async function openHistory() {
-  historySearch.value = "";
-  historyPanel.hidden = false;
-  await run("set_full_window", { open: true });
-  await loadHistory();
-  historySearch.focus();
-}
-
-function closeHistory() {
-  if (!historyOpen()) return;
-  historyPanel.hidden = true;
+function closePanel() {
+  if (openPanelName === null) return;
+  for (const item of Object.values(panels)) {
+    item.el.hidden = true;
+    item.button.setAttribute("aria-pressed", "false");
+  }
+  openPanelName = null;
   run("set_full_window", { open: false });
 }
 
-document.getElementById("history").addEventListener("click", () => {
-  if (historyOpen()) closeHistory();
-  else openHistory();
-});
-document.getElementById("history-close").addEventListener("click", closeHistory);
-listen("open-history", openHistory);
+function togglePanel(name) {
+  if (openPanelName === name) closePanel();
+  else openPanel(name);
+}
+
+for (const [name, item] of Object.entries(panels)) {
+  item.button.addEventListener("click", () => togglePanel(name));
+}
+document.querySelectorAll(".panel-close").forEach((button) => button.addEventListener("click", closePanel));
+listen("open-history", () => openPanel("history"));
+listen("open-downloads", () => openPanel("downloads"));
 
 // Using the tabs or the address bar closes the panel.
-tabsEl.addEventListener("mousedown", closeHistory);
-document.getElementById("new-tab").addEventListener("click", closeHistory);
-document.getElementById("address-form").addEventListener("submit", closeHistory);
+tabsEl.addEventListener("mousedown", closePanel);
+document.getElementById("new-tab").addEventListener("click", closePanel);
+document.getElementById("address-form").addEventListener("submit", closePanel);
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && historyOpen()) closeHistory();
+  if (event.key === "Escape") closePanel();
 });
+
+// Downloads
+
+const downloadsButton = document.getElementById("downloads");
+const downloadsList = document.getElementById("downloads-list");
+const downloadsEmpty = document.getElementById("downloads-empty");
+let downloads = [];
+
+const FILE_ICON =
+  '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
+
+function formatSize(bytes) {
+  if (bytes == null) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = unit === 0 || value >= 100 ? 0 : 1;
+  return `${value.toLocaleString("tr-TR", { maximumFractionDigits: digits })} ${units[unit]}`;
+}
+
+function statusOf(download) {
+  if (download.state === "in-progress") return "İndiriliyor";
+  if (download.state === "failed") return "Başarısız";
+  return formatSize(download.size) || "Tamamlandı";
+}
+
+function smallButton(label, onClick) {
+  const button = document.createElement("button");
+  button.className = "secondary small";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderDownloads() {
+  const busy = downloads.some((download) => download.state === "in-progress");
+  downloadsButton.classList.toggle("busy", busy);
+  downloadsEmpty.hidden = downloads.length > 0;
+  downloadsList.replaceChildren(
+    ...[...downloads].reverse().map((download) => {
+      const row = document.createElement("div");
+      row.className = `download-row ${download.state}`;
+
+      const icon = document.createElement("span");
+      icon.className = "download-icon";
+      icon.innerHTML = FILE_ICON;
+
+      const text = document.createElement("div");
+      text.className = "download-text";
+      const name = document.createElement("div");
+      name.className = "download-name";
+      name.textContent = download.fileName;
+      name.title = download.path;
+      const meta = document.createElement("div");
+      meta.className = "download-meta";
+      meta.textContent = `${statusOf(download)} · ${hostOf(download.url)}`;
+      text.append(name, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "download-actions";
+      if (download.state === "done") {
+        actions.append(
+          smallButton("Aç", () => run("open_download", { id: download.id })),
+          smallButton("Klasörde göster", () => run("show_download_in_folder", { id: download.id })),
+        );
+      }
+      const remove = document.createElement("button");
+      remove.className = "icon-button";
+      remove.setAttribute("aria-label", "Listeden kaldır");
+      remove.title = "Listeden kaldır";
+      remove.innerHTML =
+        '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+      remove.addEventListener("click", () => run("remove_download", { id: download.id }));
+      actions.append(remove);
+
+      row.append(icon, text, actions);
+      return row;
+    }),
+  );
+}
+
+async function loadDownloads() {
+  downloads = (await run("get_downloads")) || [];
+  renderDownloads();
+}
+
+document.getElementById("downloads-clear").addEventListener("click", () => run("clear_downloads"));
+
+listen("downloads", ({ payload }) => {
+  downloads = payload;
+  renderDownloads();
+});
+loadDownloads();
+
+// Settings
+
+let settings = null;
+let engines = [];
+const searchEngine = document.getElementById("search-engine");
+const restoreSession = document.getElementById("restore-session");
+const showBar = document.getElementById("show-bookmarks-bar");
+
+/// The new tab page cannot ask Raven, so it reads the search address from here.
+function rememberSearch() {
+  const engine = engines.find((item) => item.id === settings?.searchEngine) || engines[0];
+  if (!engine) return;
+  try {
+    localStorage.setItem("raven-search-url", JSON.stringify(engine.url));
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function showSettings() {
+  if (!settings) return;
+  searchEngine.replaceChildren(
+    ...engines.map((engine) => {
+      const option = document.createElement("option");
+      option.value = engine.id;
+      option.textContent = engine.name;
+      return option;
+    }),
+  );
+  searchEngine.value = settings.searchEngine;
+  restoreSession.checked = settings.restoreSession;
+  showBar.checked = settings.showBookmarksBar;
+}
+
+async function loadSettings() {
+  [settings, engines] = await Promise.all([run("get_settings"), run("get_search_engines")]);
+  engines = engines || [];
+  showSettings();
+  rememberSearch();
+}
+
+async function saveSettings(change) {
+  const saved = await run("save_settings", { settings: { ...settings, ...change } });
+  if (saved) settings = saved;
+  showSettings();
+  rememberSearch();
+}
+
+searchEngine.addEventListener("change", () => saveSettings({ searchEngine: searchEngine.value }));
+restoreSession.addEventListener("change", () => saveSettings({ restoreSession: restoreSession.checked }));
+showBar.addEventListener("change", () => saveSettings({ showBookmarksBar: showBar.checked }));
+
+listen("settings", ({ payload }) => {
+  settings = payload;
+  showSettings();
+  rememberSearch();
+});
+// Ctrl + Shift + B changes the setting from Raven's side.
+listen("bookmarks-bar", () => run("get_settings").then((saved) => {
+  if (saved) {
+    settings = saved;
+    showSettings();
+  }
+}));
+
+/// Buttons that ask once more before deleting something.
+function confirmButton(button, action) {
+  const label = button.textContent;
+  button.addEventListener("click", async () => {
+    if (button.dataset.confirm !== "yes") {
+      button.dataset.confirm = "yes";
+      button.textContent = "Emin misin? Tekrar bas";
+      setTimeout(() => {
+        button.dataset.confirm = "";
+        button.textContent = label;
+      }, 3000);
+      return;
+    }
+    button.dataset.confirm = "";
+    await action();
+    button.textContent = "Temizlendi";
+    setTimeout(() => (button.textContent = label), 2000);
+  });
+}
+
+confirmButton(document.getElementById("settings-clear-history"), () => run("clear_history"));
+confirmButton(document.getElementById("settings-clear-data"), () => run("clear_browsing_data"));
+document.getElementById("settings-github").addEventListener("click", () => {
+  closePanel();
+  run("open_url", { url: "https://github.com/uygarares/raven-browser", newTab: true });
+});
+
+loadSettings();
 
 // Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
 // catches them itself (src-tauri/src/shortcuts.rs); these cover the toolbar.
@@ -338,6 +550,7 @@ function actionFor(event) {
     return null;
   }
   if (key === "h") return "open-history";
+  if (key === "j") return "open-downloads";
   if (key === "d") return "toggle-bookmark";
   if (key === "w") return "close-tab";
   if (key === "l") return "focus-address";
@@ -353,13 +566,14 @@ document.addEventListener("keydown", (event) => {
   if (!action) return;
   event.preventDefault();
   if (action === "focus-address") {
-    closeHistory();
+    closePanel();
     address.focus();
   } else if (action === "open-history") {
-    if (historyOpen()) closeHistory();
-    else openHistory();
+    togglePanel("history");
+  } else if (action === "open-downloads") {
+    togglePanel("downloads");
   } else {
-    if (typeof action === "string" && action.endsWith("-tab")) closeHistory();
+    if (typeof action === "string" && action.endsWith("-tab")) closePanel();
     run("run_action", { action });
   }
 });

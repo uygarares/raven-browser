@@ -22,6 +22,7 @@ pub enum Action {
     GoToTab(usize),
     LastTab,
     OpenHistory,
+    OpenDownloads,
     ToggleBookmark,
     ToggleBookmarksBar,
 }
@@ -45,6 +46,7 @@ pub fn from_key(ctrl: bool, shift: bool, key: u32) -> Option<Action> {
         (0x31..=0x38, false) => Action::GoToTab((key - 0x31) as usize), // 1..8
         (0x39, false) => Action::LastTab,     // 9
         (0x48, false) => Action::OpenHistory, // H
+        (0x4A, false) => Action::OpenDownloads, // J
         (0x44, false) => Action::ToggleBookmark, // D
         (0x42, true) => Action::ToggleBookmarksBar, // Shift+B
         _ => return None,
@@ -81,6 +83,13 @@ pub fn perform(app: &AppHandle, action: Action) {
                     let _ = toolbar.set_focus();
                 }
                 let _ = app.emit("open-history", ());
+                Ok(())
+            }
+            Action::OpenDownloads => {
+                if let Some(toolbar) = app.get_webview("ui") {
+                    let _ = toolbar.set_focus();
+                }
+                let _ = app.emit("open-downloads", ());
                 Ok(())
             }
             Action::ToggleBookmark => crate::bookmarks::toggle_active(&app).map(|_| ()),

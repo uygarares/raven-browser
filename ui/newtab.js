@@ -15,13 +15,22 @@ function tick() {
 tick();
 setInterval(tick, 1000);
 
-// Same rules as the address bar (src-tauri/src/tabs.rs, to_url).
+// Same rules as the address bar (src-tauri/src/tabs.rs, to_url). The search
+// engine chosen in the settings is copied here by the toolbar.
+function searchUrl() {
+  try {
+    return JSON.parse(localStorage.getItem("raven-search-url")) || "https://www.google.com/search?q=";
+  } catch {
+    return "https://www.google.com/search?q=";
+  }
+}
+
 function toUrl(input) {
   const text = input.trim();
   if (!text) return null;
   if (/^https?:\/\//i.test(text)) return text;
   if (text.includes(".") && !text.includes(" ")) return `https://${text}`;
-  return `https://www.google.com/search?q=${encodeURIComponent(text)}`;
+  return `${searchUrl()}${encodeURIComponent(text).replace(/%20/g, "+")}`;
 }
 
 document.getElementById("search").addEventListener("submit", (event) => {
@@ -163,7 +172,7 @@ document.getElementById("editor-cancel").addEventListener("click", () => editor.
 
 document.getElementById("editor-form").addEventListener("submit", (event) => {
   const url = toUrl(editorUrl.value);
-  if (!url || url.startsWith("https://www.google.com/search")) {
+  if (!url || url.startsWith(searchUrl())) {
     // Not an address.
     event.preventDefault();
     editorUrl.setCustomValidity("Geçerli bir adres yaz, örneğin f2pclub.app");

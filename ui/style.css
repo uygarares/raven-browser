@@ -357,3 +357,100 @@ body.with-bookmarks-bar .bookmarks-bar { display: flex; }
 /* Site logos inside the small marks */
 .tab-icon.has-logo, .mark-small.has-logo { background: transparent; }
 .tab-icon img, .mark-small img { width: 100%; height: 100%; object-fit: contain; border-radius: 2px; }
+
+.icon-button[aria-pressed="true"] { background: var(--hover); color: var(--text); }
+
+/* A download is running: a small dot on the downloads button. */
+#downloads { position: relative; }
+#downloads.busy::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.panel-note { margin: 8px 0 0; color: var(--text-3); font-size: 13px; }
+
+.secondary.small { height: 28px; padding: 0 10px; font-size: 12px; }
+
+/* Downloads */
+.downloads-list { margin-top: 24px; display: flex; flex-direction: column; gap: 4px; }
+
+.download-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--tile);
+}
+.download-icon { flex: none; color: var(--text-2); display: grid; }
+.download-text { flex: 1; min-width: 0; }
+.download-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.download-meta { margin-top: 2px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.download-row.failed .download-name { color: var(--text-2); text-decoration: line-through; }
+.download-row.in-progress .download-meta { color: var(--text-2); }
+.download-actions { flex: none; display: flex; align-items: center; gap: 6px; }
+
+/* Settings */
+.settings-group { margin-top: 32px; }
+.settings-group h2 { margin: 0 0 8px; font-size: 13px; font-weight: 500; color: var(--text-2); }
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 8px 16px;
+  border: 1px solid var(--hairline);
+  border-bottom-width: 0;
+  background: var(--tile);
+}
+h2 + .setting { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.setting:last-child { border-bottom-width: 1px; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
+.setting-name { display: block; font-size: 14px; color: var(--text); }
+.setting-note { display: block; margin-top: 2px; font-size: 12px; color: var(--text-3); }
+
+.setting select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--page);
+  color: var(--text);
+  font: 400 13px var(--font);
+}
+
+.switch {
+  appearance: none;
+  flex: none;
+  width: 40px;
+  height: 24px;
+  margin: 0;
+  border-radius: 12px;
+  background: rgba(238, 240, 245, 0.16);
+  position: relative;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 150ms var(--ease);
+}
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(16px); background: #0b0d14; }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

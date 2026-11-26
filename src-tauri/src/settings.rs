@@ -28,6 +28,28 @@ pub struct Settings {
     pub restore_session: bool,
     /// Show the bookmarks bar under the address bar (Ctrl+Shift+B).
     pub show_bookmarks_bar: bool,
+    /// Search engine for the address bar and the new tab page (see SEARCH_ENGINES).
+    pub search_engine: String,
+}
+
+/// Search engines Raven offers: id, name, and the address the words are added to.
+pub const SEARCH_ENGINES: &[(&str, &str, &str)] = &[
+    ("google", "Google", "https://www.google.com/search?q="),
+    ("duckduckgo", "DuckDuckGo", "https://duckduckgo.com/?q="),
+    ("bing", "Bing", "https://www.bing.com/search?q="),
+    ("brave", "Brave Search", "https://search.brave.com/search?q="),
+    ("yandex", "Yandex", "https://yandex.com.tr/search/?text="),
+];
+
+/// The search address of the chosen engine.
+pub fn search_url(app: &AppHandle) -> String {
+    let id = app.state::<SettingsState>().0.lock().unwrap().search_engine.clone();
+    SEARCH_ENGINES
+        .iter()
+        .find(|(engine, _, _)| *engine == id)
+        .unwrap_or(&SEARCH_ENGINES[0])
+        .2
+        .to_string()
 }
 
 impl Default for Settings {
@@ -38,6 +60,7 @@ impl Default for Settings {
             onboarded: false,
             restore_session: true,
             show_bookmarks_bar: true,
+            search_engine: "google".into(),
         }
     }
 }
@@ -45,6 +68,9 @@ impl Default for Settings {
 impl Settings {
     fn clamped(mut self) -> Self {
         self.glass_tint = self.glass_tint.clamp(0.05, 0.85);
+        if !SEARCH_ENGINES.iter().any(|(id, _, _)| *id == self.search_engine) {
+            self.search_engine = "google".into();
+        }
         self
     }
 }
@@ -84,9 +110,35 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<Setting
     store(&app, &settings)?;
     *app.state::<SettingsState>().0.lock().unwrap() = settings.clone();
     let _ = app.emit("settings", &settings);
-    // New tab pages read the theme when they load, so reload the open ones.
+    crate::bookmarks::refresh_bar(&app);
+    // New tab pages read the search engine when they load, so reload the open ones.
     crate::tabs::reload_new_tab_pages(&app);
     Ok(settings)
+}
+
+#[derive(Serialize)]
+pub struct Engine {
+    id: &'static str,
+    name: &'static str,
+    url: &'static str,
+}
+
+#[tauri::command]
+pub async fn get_search_engines() -> Vec<Engine> {
+    SEARCH_ENGINES.iter().map(|(id, name, url)| Engine { id, name, url }).collect()
+}
+
+/// Deletes cookies, cache and site data (you get signed out of websites).
+#[tauri::command]
+pub async fn clear_browsing_data(app: AppHandle) -> Result<(), String> {
+    let webview = app
+        .webviews()
+        .into_iter()
+        .find(|(label, _)| crate::tabs::is_tab_label(label))
+        .map(|(_, webview)| webview)
+        .or_else(|| app.get_webview("ui"))
+        .ok_or("No webview")?;
+    webview.clear_all_browsing_data().map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -101,6 +153,7 @@ mod tests {
         assert!(!settings.onboarded);
         assert!(settings.restore_session);
         assert!(settings.show_bookmarks_bar);
+        assert_eq!(settings.search_engine, "google");
     }
 
     #[test]

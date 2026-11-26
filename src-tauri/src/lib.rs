@@ -8,6 +8,7 @@
 //!   the active tab is visible. Tabs get no access to Raven's commands.
 
 mod bookmarks;
+mod downloads;
 mod history;
 mod session;
 mod settings;
@@ -122,6 +123,13 @@ pub fn run() {
             bookmarks::remove_bookmark,
             history::get_history,
             history::get_top_sites,
+            downloads::get_downloads,
+            downloads::open_download,
+            downloads::show_download_in_folder,
+            downloads::remove_download,
+            downloads::clear_downloads,
+            settings::get_search_engines,
+            settings::clear_browsing_data,
             history::remove_history_entry,
             history::clear_history,
             set_full_window,
@@ -134,6 +142,7 @@ pub fn run() {
             app.manage(settings::SettingsState(Mutex::new(saved)));
             app.manage(bookmarks::load(handle));
             app.manage(history::load(handle));
+            app.manage(downloads::load(handle));
             history::start_saving(handle);
             let last_session = session::load(handle);
             bookmarks::refresh_bar(handle);

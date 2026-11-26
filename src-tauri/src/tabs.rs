@@ -13,14 +13,14 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webview, WebviewUrl,
 };
 
-use crate::{history, session, toolbar_height};
+use crate::{downloads, history, session, settings, toolbar_height};
+use tauri::webview::DownloadEvent;
 
 pub const HOME_URL: &str = "https://www.google.com";
 /// Opens Raven's own new tab page (ui/newtab.html).
 pub const NEW_TAB: &str = "raven:newtab";
 const NEW_TAB_PAGE: &str = "newtab.html";
 const WHITE: tauri::window::Color = tauri::window::Color(255, 255, 255, 255);
-const SEARCH_URL: &str = "https://www.google.com/search";
 const NEW_TAB_TITLE: &str = "Yeni sekme";
 
 #[derive(Clone, Serialize)]
@@ -174,8 +174,9 @@ fn update_tab(app: &AppHandle, id: u32, change: impl FnOnce(&mut TabInfo)) {
     }
 }
 
-/// Turns what the user typed into a web address: a URL, a domain, or a search.
-pub fn to_url(input: &str) -> Result<Url, String> {
+/// Turns what the user typed into a web address: a URL, a domain, or a search
+/// with the chosen search engine (`search_url` ends where the words go).
+pub fn to_url(input: &str, search_url: &str) -> Result<Url, String> {
     let text = input.trim();
     if text.is_empty() {
         return HOME_URL.parse().map_err(|e| format!("{e}"));
@@ -188,7 +189,13 @@ pub fn to_url(input: &str) -> Result<Url, String> {
             return Ok(url);
         }
     }
-    Url::parse_with_params(SEARCH_URL, &[("q", text)]).map_err(|e| format!("{e}"))
+    let words: String = Url::parse_with_params("https://x/", &[("q", text)])
+        .map_err(|e| format!("{e}"))?
+        .query()
+        .unwrap_or("")
+        .trim_start_matches("q=")
+        .to_string();
+    format!("{search_url}{words}").parse().map_err(|e| format!("{e}"))
 }
 
 /// Adds a tab to the list, without a webview yet.
@@ -260,6 +267,7 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
     let on_title = app.clone();
     let on_popup = app.clone();
     let on_link = app.clone();
+    let on_download = app.clone();
     let builder = WebviewBuilder::new(label(id), target)
         .background_color(background_for(&url))
         .initialization_script(LINK_SCRIPT)
@@ -306,6 +314,18 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
                 history::set_title(&on_title, url.as_str(), &title);
             }
             update_tab(&on_title, id, |tab| tab.title = title);
+        })
+        .on_download(move |_webview, event| {
+            match event {
+                DownloadEvent::Requested { url, destination } => {
+                    downloads::started(&on_download, url.as_str(), destination);
+                }
+                DownloadEvent::Finished { url, path, success } => {
+                    downloads::finished(&on_download, url.as_str(), path, success);
+                }
+                _ => {}
+            }
+            true
         })
         // Links that open a new window open in a new Raven tab next to this one.
         .on_new_window(move |url, _features| {
@@ -558,7 +578,7 @@ pub async fn open_url(app: AppHandle, url: String, new_tab: bool) -> Result<(), 
 
 #[tauri::command]
 pub async fn navigate(app: AppHandle, input: String) -> Result<(), String> {
-    let url = to_url(&input)?;
+    let url = to_url(&input, &settings::search_url(&app))?;
     active_tab(&app)?.navigate(url).map_err(|e| e.to_string())
 }
 
@@ -579,7 +599,13 @@ pub async fn reload(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_new_tab_url, to_url};
+    use super::is_new_tab_url;
+
+    const GOOGLE: &str = "https://www.google.com/search?q=";
+
+    fn to_url(input: &str) -> Result<tauri::Url, String> {
+        super::to_url(input, GOOGLE)
+    }
 
     #[test]
     fn keeps_full_urls() {
@@ -596,6 +622,13 @@ mod tests {
         let url = to_url("raven browser").unwrap();
         assert_eq!(url.host_str(), Some("www.google.com"));
         assert_eq!(url.query(), Some("q=raven+browser"));
+    }
+
+    #[test]
+    fn uses_the_chosen_search_engine() {
+        let url = super::to_url("çay & simit", "https://duckduckgo.com/?q=").unwrap();
+        assert_eq!(url.host_str(), Some("duckduckgo.com"));
+        assert_eq!(url.query(), Some("q=%C3%A7ay+%26+simit"));
     }
 
     #[test]
