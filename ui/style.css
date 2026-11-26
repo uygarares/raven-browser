@@ -12,7 +12,7 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  background: var(--tab-row);
   color: var(--text);
   font: 400 13px var(--font);
   user-select: none;
@@ -48,7 +48,6 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   gap: 4px;
   padding-left: 12px;
   background: var(--tab-row);
-  box-shadow: var(--edge);
 }
 
 .logo {
@@ -178,7 +177,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   min-width: 0;
   border: 0;
   outline: none;
-  background: transparent;
+  background: var(--tab-row);
   color: var(--text);
   font: 400 13px var(--font);
   user-select: text;
@@ -204,98 +203,3 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
-
-/* Full-window theme picker (first launch, and Menu > Görünüm) */
-
-.picker {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: var(--page);
-  overflow: auto;
-}
-body.full-window .picker { display: flex; }
-body.full-window .tab-row > :not(.drag-space):not(.window-controls):not(.logo),
-body.full-window .nav-row { visibility: hidden; }
-body.full-window .tab-row { position: relative; z-index: 1; background: transparent; box-shadow: none; }
-
-.picker-inner {
-  margin: auto;
-  width: min(720px, 100% - 48px);
-  padding: 64px 0 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.picker h1 {
-  margin: 0;
-  font: 400 32px/1.15 var(--font-display);
-  letter-spacing: -0.01em;
-}
-.picker p { margin: 8px 0 0; color: var(--text-2); font-size: 15px; line-height: 22px; }
-
-.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-
-.choice {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid var(--hairline);
-  background: var(--tile);
-  color: var(--text);
-  text-align: left;
-  font: inherit;
-  transition: border-color 150ms var(--ease), background-color 150ms var(--ease);
-}
-.choice:hover { background: var(--hover); }
-.choice[aria-pressed="true"] { border-color: var(--accent); }
-
-.choice-name { font-size: 15px; font-weight: 500; padding: 0 4px; }
-.choice-note { color: var(--text-2); font-size: 13px; padding: 0 4px 4px; }
-
-/* Small drawings of each theme */
-.preview {
-  height: 140px;
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--hairline);
-}
-.preview .p-tabs { height: 20px; }
-.preview .p-bar { height: 18px; }
-.preview .p-page { flex: 1; display: grid; place-items: center; font: 400 22px var(--font-display); color: #eef0f5; }
-.preview.solid .p-tabs { background: #07080d; }
-.preview.solid .p-bar { background: #11141c; }
-.preview.solid .p-page { background: #0b0d14; }
-.preview.glass {
-  background: linear-gradient(180deg, #5b6b8c 0%, #2c3448 70%, #171b26 100%);
-}
-.preview.glass .p-tabs { background: rgba(7, 8, 13, 0.3); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
-.preview.glass .p-bar { background: rgba(17, 20, 28, 0.4); }
-.preview.glass .p-page { background: rgba(7, 8, 13, 0.35); }
-
-.tint-control { display: flex; flex-direction: column; gap: 8px; }
-.tint-control[hidden] { display: none; }
-.tint-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-2); }
-.tint-value { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.tint-control input { width: 100%; accent-color: var(--accent); }
-
-.picker-actions { display: flex; justify-content: flex-end; }
-
-.primary {
-  height: 40px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--text);
-  color: #0b0d14;
-  font: 500 14px var(--font);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  transition: background-color 150ms var(--ease);
-}
-.primary:hover { background: #ffffff; }
-.primary:active { transform: scale(0.98); }

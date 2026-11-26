@@ -1,9 +1,7 @@
-/* Raven's two built-in themes, shared by the toolbar and the new tab page.
+/* Raven's theme (Solid), shared by the toolbar and the new tab page.
    Colors follow unslop (github.com/heydamir/unslop, CC BY 4.0): one ink-tinted
    neutral ramp, three text roles, and the Raven logo's purple as the only accent.
-
-   The theme is set on <html data-theme="solid|glass"> with --tint (0.05 to 0.85)
-   for how dark the glass is. */
+   More themes will come from the theme store, by overriding these variables. */
 
 :root {
   --text: #eef0f5;
@@ -17,23 +15,9 @@
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
-  --tint: 0.3;
-
-  /* Solid theme */
   --tab-row: #07080d;
   --bar: #11141c;
   --page: #0b0d14;
   --field: #0b0d14;
   --tile: #11141c;
-  --edge: none;
-}
-
-:root[data-theme="glass"] {
-  --tab-row: rgb(7 8 13 / var(--tint));
-  --bar: rgb(17 20 28 / calc(var(--tint) + 0.1));
-  --page: rgb(7 8 13 / calc(var(--tint) + 0.05));
-  --field: rgb(7 8 13 / calc(var(--tint) + 0.05));
-  --tile: rgb(238 240 245 / 0.07);
-  /* Thin light along the top of each glass part, like the edge of real glass. */
-  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }

@@ -1,13 +1,10 @@
 //! Raven Browser: the main window.
 //!
-//! One see-through window holds several webviews:
+//! One window holds several webviews:
 //! - "ui": Raven's own toolbar (tabs, back, forward, reload, address bar), from `ui/`.
-//!   It grows to fill the window for full-window screens like the theme picker.
+//!   It grows to fill the window for full-window screens (settings and the theme store, later).
 //! - "tab-N": one per tab, showing a website or Raven's new tab page. Only the
 //!   active tab is visible. Tabs get no access to Raven's commands.
-//!
-//! The window itself is transparent, so the glass theme shows the desktop behind
-//! Raven's own parts. Websites paint their own background as usual.
 
 mod settings;
 mod shortcuts;
@@ -21,10 +18,11 @@ use tauri::{window::WindowBuilder, AppHandle, LogicalPosition, LogicalSize, Mana
 /// Height of the toolbar, in logical pixels. Must match `--toolbar-height` in ui/style.css.
 pub const TOOLBAR_HEIGHT: f64 = 84.0;
 
-/// Fully see-through. WebView2 only accepts fully clear or fully solid backgrounds.
-pub const CLEAR: tauri::window::Color = tauri::window::Color(0, 0, 0, 0);
+/// Raven's dark background (the Solid theme's page color). Shown for a moment
+/// before a page draws itself, instead of a white flash.
+pub const BACKGROUND: tauri::window::Color = tauri::window::Color(11, 13, 20, 255);
 
-/// True while the toolbar fills the whole window (for example the theme picker).
+/// True while the toolbar fills the whole window (settings and the theme store, later).
 static FULL_WINDOW_UI: AtomicBool = AtomicBool::new(false);
 
 pub fn is_full_window() -> bool {
@@ -101,9 +99,7 @@ pub fn run() {
                 // No Windows title bar: Raven's toolbar has its own window buttons.
                 .decorations(false)
                 .shadow(true)
-                // See-through, for the glass theme. The solid theme paints over it.
-                .transparent(true)
-                .background_color(CLEAR)
+                .background_color(BACKGROUND)
                 .build()?;
 
             // Raven's toolbar.
@@ -111,8 +107,7 @@ pub fn run() {
                 "ui",
                 tauri::WebviewUrl::App("index.html".into()),
             )
-            .transparent(true)
-            .background_color(CLEAR);
+            .background_color(BACKGROUND);
             window.add_child(
                 toolbar,
                 LogicalPosition::new(0.0, 0.0),

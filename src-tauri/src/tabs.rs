@@ -59,11 +59,10 @@ pub fn is_new_tab_url(url: &str) -> bool {
             && url.contains(NEW_TAB_PAGE))
 }
 
-/// Websites get the usual white page background. Raven's new tab page is
-/// see-through so the glass theme can show the desktop.
+/// Websites get the usual white page background, Raven's new tab page its dark one.
 fn background_for(url: &str) -> tauri::window::Color {
     if is_new_tab_url(url) {
-        crate::CLEAR
+        crate::BACKGROUND
     } else {
         WHITE
     }
@@ -154,7 +153,6 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
     let on_title = app.clone();
     let on_popup = app.clone();
     let builder = WebviewBuilder::new(label(id), target)
-        .transparent(true)
         .background_color(background_for(if new_tab { NEW_TAB } else { url }))
         .on_page_load(move |webview, payload| {
             let loading = matches!(payload.event(), PageLoadEvent::Started);

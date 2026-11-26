@@ -1,5 +1,5 @@
 // Raven's new tab page: clock, date and search. It has no access to Raven's
-// commands; it only reads the theme (apply-theme.js) and opens addresses.
+// commands; it only shows the time and opens addresses.
 
 const clock = document.getElementById("clock");
 const date = document.getElementById("date");

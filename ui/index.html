@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Raven</title>
-  <script src="apply-theme.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -46,49 +45,7 @@
       <input id="address" type="text" placeholder="Ara ya da adres yaz" autocomplete="off" spellcheck="false">
       <span id="loading" class="spinner" aria-hidden="true"></span>
     </form>
-    <button id="appearance" class="icon-button" aria-label="Görünüm" title="Görünüm">
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v16"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></svg>
-    </button>
   </div>
-
-  <!-- Theme picker: shown on the first launch, and from the Görünüm button. -->
-  <section class="picker" aria-labelledby="picker-title">
-    <div class="picker-inner">
-      <div>
-        <h1 id="picker-title">Raven'ın görünümünü seç</h1>
-        <p>İstediğin zaman sağ üstteki Görünüm tuşundan değiştirebilirsin</p>
-      </div>
-
-      <div class="choices" role="group" aria-label="Tema">
-        <button class="choice" data-theme-choice="solid" aria-pressed="false">
-          <span class="preview solid" aria-hidden="true">
-            <span class="p-tabs"></span><span class="p-bar"></span><span class="p-page">19:09</span>
-          </span>
-          <span class="choice-name">Düz</span>
-          <span class="choice-note">Sakin, koyu yüzeyler. Her arka planda okunaklı</span>
-        </button>
-        <button class="choice" data-theme-choice="glass" aria-pressed="false">
-          <span class="preview glass" aria-hidden="true">
-            <span class="p-tabs"></span><span class="p-bar"></span><span class="p-page">19:09</span>
-          </span>
-          <span class="choice-name">Şeffaf cam</span>
-          <span class="choice-note">Masaüstün Raven'ın içinden görünür</span>
-        </button>
-      </div>
-
-      <div id="tint-control" class="tint-control" hidden>
-        <label class="tint-label" for="tint">
-          <span>Cam koyuluğu</span>
-          <span id="tint-value" class="tint-value">30%</span>
-        </label>
-        <input id="tint" type="range" min="5" max="85" step="1" value="30">
-      </div>
-
-      <div class="picker-actions">
-        <button id="picker-done" class="primary">Başla</button>
-      </div>
-    </div>
-  </section>
 
   <template id="tab-template">
     <div class="tab" role="tab">

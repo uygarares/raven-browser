@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager};
 pub enum Theme {
     /// Flat dark surfaces.
     Solid,
-    /// See-through glass: the desktop shows behind Raven's own parts.
+    /// Reserved for themes from the theme store (not built yet).
     Glass,
 }
 

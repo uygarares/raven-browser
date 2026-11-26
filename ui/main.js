@@ -1,4 +1,4 @@
-// Raven toolbar: tabs, navigation, window buttons and the theme picker.
+// Raven toolbar: tabs, navigation and window buttons.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const appWindow = window.__TAURI__.window.getCurrentWindow();
@@ -101,103 +101,6 @@ invoke("get_tabs").then((payload) => {
   render();
 });
 
-// Themes
-
-const root = document.documentElement;
-let settings = null;
-let draft = null;
-
-function applyTheme(theme, glassTint) {
-  root.dataset.theme = theme;
-  root.style.setProperty("--tint", String(glassTint));
-}
-
-/// Keeps a copy for the new tab page, which reads it when it loads.
-function rememberTheme(value) {
-  try {
-    localStorage.setItem("raven-theme", JSON.stringify({ theme: value.theme, glassTint: value.glassTint }));
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-const choices = document.querySelectorAll("[data-theme-choice]");
-const tintControl = document.getElementById("tint-control");
-const tint = document.getElementById("tint");
-const tintValue = document.getElementById("tint-value");
-const pickerDone = document.getElementById("picker-done");
-
-function showDraft() {
-  choices.forEach((choice) => {
-    choice.setAttribute("aria-pressed", String(choice.dataset.themeChoice === draft.theme));
-  });
-  tintControl.hidden = draft.theme !== "glass";
-  tint.value = String(Math.round(draft.glassTint * 100));
-  tintValue.textContent = `${tint.value}%`;
-  // Preview right away: the picker itself is drawn in the chosen theme.
-  applyTheme(draft.theme, draft.glassTint);
-}
-
-async function openPicker() {
-  draft = { ...settings };
-  pickerDone.textContent = settings.onboarded ? "Kaydet" : "Başla";
-  showDraft();
-  document.body.classList.add("full-window");
-  try {
-    await invoke("set_full_window", { open: true });
-  } catch (error) {
-    // Without the full window the picker cannot be seen, so give the toolbar back.
-    console.error("set_full_window", error);
-    document.body.classList.remove("full-window");
-  }
-}
-
-async function closePicker() {
-  document.body.classList.remove("full-window");
-  await run("set_full_window", { open: false });
-}
-
-choices.forEach((choice) => {
-  choice.addEventListener("click", () => {
-    draft.theme = choice.dataset.themeChoice;
-    showDraft();
-  });
-});
-
-tint.addEventListener("input", () => {
-  draft.glassTint = Number(tint.value) / 100;
-  showDraft();
-});
-
-pickerDone.addEventListener("click", async () => {
-  const saved = await run("save_settings", { settings: { ...draft, onboarded: true } });
-  if (saved) settings = saved;
-  closePicker();
-});
-
-document.getElementById("appearance").addEventListener("click", openPicker);
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && document.body.classList.contains("full-window") && settings.onboarded) {
-    applyTheme(settings.theme, settings.glassTint);
-    closePicker();
-  }
-});
-
-listen("settings", ({ payload }) => {
-  settings = payload;
-  applyTheme(settings.theme, settings.glassTint);
-  rememberTheme(settings);
-});
-
-invoke("get_settings").then((saved) => {
-  settings = saved;
-  applyTheme(settings.theme, settings.glassTint);
-  rememberTheme(settings);
-  // First launch: let the user pick a theme before anything else.
-  if (!settings.onboarded) openPicker();
-});
-
 // Keyboard shortcuts, the same as Chrome and Edge. Inside websites, Raven
 // catches them itself (src-tauri/src/shortcuts.rs); these cover the toolbar.
 function actionFor(event) {
@@ -216,7 +119,6 @@ function actionFor(event) {
 }
 
 document.addEventListener("keydown", (event) => {
-  if (document.body.classList.contains("full-window")) return;
   const action = actionFor(event);
   if (!action) return;
   event.preventDefault();
