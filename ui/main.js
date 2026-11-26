@@ -255,7 +255,7 @@ address.addEventListener("input", async (event) => {
   // user is deleting.
   const deleting = (event.inputType || "").startsWith("delete");
   const atEnd = address.selectionStart === query.length && address.selectionEnd === query.length;
-  if (!deleting && atEnd && result.inline && address.value === query) {
+  if (!deleting && atEnd && result.inline && address.value === query && !query.startsWith("?")) {
     address.value = query + result.inline.slice(query.length);
     address.setSelectionRange(query.length, address.value.length);
   }
