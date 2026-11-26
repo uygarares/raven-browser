@@ -394,6 +394,7 @@ fn wake(app: &AppHandle, id: u32) -> tauri::Result<Webview> {
         LogicalSize::new(size.width, (size.height - top).max(0.0)),
     )?;
     crate::shortcuts::listen_in_tab(app, &webview);
+    crate::tab_created();
     if crate::is_full_window() {
         crate::layout(app);
     }

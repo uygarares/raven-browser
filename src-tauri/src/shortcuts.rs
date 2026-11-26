@@ -23,6 +23,7 @@ pub enum Action {
     LastTab,
     OpenHistory,
     OpenDownloads,
+    OpenSettings,
     NewPrivateTab,
     ZoomIn,
     ZoomOut,
@@ -91,6 +92,13 @@ pub fn perform(app: &AppHandle, action: Action) {
                     let _ = toolbar.set_focus();
                 }
                 let _ = app.emit("open-history", ());
+                Ok(())
+            }
+            Action::OpenSettings => {
+                if let Some(toolbar) = app.get_webview("ui") {
+                    let _ = toolbar.set_focus();
+                }
+                let _ = app.emit("open-settings", ());
                 Ok(())
             }
             Action::OpenDownloads => {

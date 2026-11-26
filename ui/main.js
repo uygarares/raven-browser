@@ -311,9 +311,9 @@ historyClear.addEventListener("click", async () => {
 // the tab row and address bar stay usable above it.
 
 const panels = {
-  history: { el: historyPanel, button: document.getElementById("history"), load: loadHistory, focus: historySearch },
+  history: { el: historyPanel, load: loadHistory, focus: historySearch },
   downloads: { el: document.getElementById("downloads-panel"), button: document.getElementById("downloads"), load: loadDownloads },
-  settings: { el: document.getElementById("settings-panel"), button: document.getElementById("settings"), load: loadSettings },
+  settings: { el: document.getElementById("settings-panel"), load: loadSettings },
 };
 let openPanelName = null;
 
@@ -323,7 +323,7 @@ async function openPanel(name) {
   const wasOpen = openPanelName !== null;
   for (const [other, item] of Object.entries(panels)) {
     item.el.hidden = other !== name;
-    item.button.setAttribute("aria-pressed", String(other === name));
+    item.button?.setAttribute("aria-pressed", String(other === name));
   }
   openPanelName = name;
   if (!wasOpen) await run("set_full_window", { open: true });
@@ -335,7 +335,7 @@ function closePanel() {
   if (openPanelName === null) return;
   for (const item of Object.values(panels)) {
     item.el.hidden = true;
-    item.button.setAttribute("aria-pressed", "false");
+    item.button?.setAttribute("aria-pressed", "false");
   }
   openPanelName = null;
   run("set_full_window", { open: false });
@@ -347,11 +347,15 @@ function togglePanel(name) {
 }
 
 for (const [name, item] of Object.entries(panels)) {
-  item.button.addEventListener("click", () => togglePanel(name));
+  item.button?.addEventListener("click", () => togglePanel(name));
 }
 document.querySelectorAll(".panel-close").forEach((button) => button.addEventListener("click", closePanel));
 listen("open-history", () => openPanel("history"));
 listen("open-downloads", () => openPanel("downloads"));
+listen("open-settings", () => openPanel("settings"));
+
+// The ⋮ menu: new tabs, zoom, history, downloads, bookmarks bar, settings.
+document.getElementById("menu-button").addEventListener("click", () => run("open_menu"));
 
 // Using the tabs or the address bar closes the panel.
 tabsEl.addEventListener("mousedown", closePanel);
@@ -399,9 +403,13 @@ function smallButton(label, onClick) {
   return button;
 }
 
+let downloadedThisSession = false;
+
 function renderDownloads() {
   const busy = downloads.some((download) => download.state === "in-progress");
   downloadsButton.classList.toggle("busy", busy);
+  // Like Chrome, the downloads button appears once something is downloaded.
+  downloadsButton.hidden = !(busy || downloadedThisSession);
   downloadsEmpty.hidden = downloads.length > 0;
   downloadsList.replaceChildren(
     ...[...downloads].reverse().map((download) => {
@@ -453,6 +461,9 @@ async function loadDownloads() {
 
 document.getElementById("downloads-clear").addEventListener("click", () => run("clear_downloads"));
 
+listen("download-started", () => {
+  downloadedThisSession = true;
+});
 listen("downloads", ({ payload }) => {
   downloads = payload;
   renderDownloads();

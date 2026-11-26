@@ -39,6 +39,17 @@ pub const BACKGROUND: tauri::window::Color = tauri::window::Color(11, 13, 20, 25
 static FULL_WINDOW_UI: AtomicBool = AtomicBool::new(false);
 /// True while the bookmarks bar is shown.
 static SHOW_BOOKMARKS_BAR: AtomicBool = AtomicBool::new(false);
+/// True when a tab was created after the ⋮ menu: the menu must then be made
+/// again, because webviews created later are drawn on top of earlier ones.
+static MENU_BEHIND: AtomicBool = AtomicBool::new(true);
+
+const MENU_WIDTH: f64 = 328.0;
+const MENU_HEIGHT: f64 = 294.0;
+
+/// Called when a tab webview is created.
+pub fn tab_created() {
+    MENU_BEHIND.store(true, Ordering::SeqCst);
+}
 
 pub fn is_full_window() -> bool {
     FULL_WINDOW_UI.load(Ordering::SeqCst)
@@ -96,6 +107,44 @@ async fn set_full_window(app: AppHandle, open: bool) {
     }
 }
 
+/// Opens the ⋮ menu under its button, at the right end of the address bar.
+#[tauri::command]
+async fn open_menu(app: AppHandle) -> Result<(), String> {
+    let window = app.get_window("main").ok_or("No window")?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let size = window.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(scale);
+    let position = LogicalPosition::new((size.width - MENU_WIDTH - 8.0).max(0.0), TOOLBAR_BASE - 4.0);
+
+    let existing = app.get_webview("menu");
+    if let Some(menu) = &existing {
+        if !MENU_BEHIND.load(Ordering::SeqCst) {
+            menu.set_position(position).map_err(|e| e.to_string())?;
+            menu.show().map_err(|e| e.to_string())?;
+            menu.set_focus().map_err(|e| e.to_string())?;
+            let _ = app.emit("menu-opened", ());
+            return Ok(());
+        }
+    }
+    if let Some(menu) = existing {
+        let _ = menu.close();
+    }
+    let builder = tauri::webview::WebviewBuilder::new("menu", tauri::WebviewUrl::App("menu.html".into()))
+        .background_color(BACKGROUND)
+        .focused(true);
+    window
+        .add_child(builder, position, LogicalSize::new(MENU_WIDTH, MENU_HEIGHT))
+        .map_err(|e| e.to_string())?;
+    MENU_BEHIND.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_menu(app: AppHandle) {
+    if let Some(menu) = app.get_webview("menu") {
+        let _ = menu.hide();
+    }
+}
+
 /// Is the bookmarks bar shown? Asked by the toolbar when it loads.
 #[tauri::command]
 async fn get_bookmarks_bar() -> bool {
@@ -135,6 +184,8 @@ pub fn run() {
             history::clear_history,
             set_full_window,
             get_bookmarks_bar,
+            open_menu,
+            close_menu,
         ])
         .setup(|app| {
             let handle = app.handle();
@@ -193,6 +244,9 @@ pub fn run() {
             window.on_window_event(move |event| {
                 if let WindowEvent::Resized(_) = event {
                     layout(&resize_handle);
+                    if let Some(menu) = resize_handle.get_webview("menu") {
+                        let _ = menu.hide();
+                    }
                 }
             });
 

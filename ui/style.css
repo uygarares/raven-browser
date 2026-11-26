@@ -473,3 +473,5 @@ h2 + .setting { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 }
 .zoom-level:hover { background: var(--hover); color: var(--text); }
 .zoom-level[hidden] { display: none; }
+
+[hidden] { display: none !important; }
