@@ -193,6 +193,9 @@ pub fn create_tab(app: &AppHandle, url: &str, activate: bool) -> tauri::Result<u
         LogicalSize::new(size.width, (size.height - TOOLBAR_HEIGHT).max(0.0)),
     )?;
     crate::shortcuts::listen_in_tab(app, &webview);
+    if crate::is_full_window() {
+        crate::layout(app);
+    }
 
     if activate {
         show_only(app, id);

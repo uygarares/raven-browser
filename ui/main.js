@@ -143,7 +143,13 @@ async function openPicker() {
   pickerDone.textContent = settings.onboarded ? "Kaydet" : "Başla";
   showDraft();
   document.body.classList.add("full-window");
-  await run("set_full_window", { open: true });
+  try {
+    await invoke("set_full_window", { open: true });
+  } catch (error) {
+    // Without the full window the picker cannot be seen, so give the toolbar back.
+    console.error("set_full_window", error);
+    document.body.classList.remove("full-window");
+  }
 }
 
 async function closePicker() {

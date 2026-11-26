@@ -32,7 +32,7 @@ pub fn is_full_window() -> bool {
 }
 
 /// Sizes the toolbar and every tab to the window.
-fn layout(app: &AppHandle) {
+pub fn layout(app: &AppHandle) {
     let Some(window) = app.get_window("main") else { return };
     let scale = window.scale_factor().unwrap_or(1.0);
     let Ok(size) = window.inner_size() else { return };
@@ -44,10 +44,14 @@ fn layout(app: &AppHandle) {
             let _ = webview.set_size(LogicalSize::new(size.width, height));
         } else if tabs::is_tab_label(&label) {
             let _ = webview.set_position(LogicalPosition::new(0.0, TOOLBAR_HEIGHT));
-            let _ = webview.set_size(LogicalSize::new(
-                size.width,
-                (size.height - TOOLBAR_HEIGHT).max(0.0),
-            ));
+            // Tabs sit on top of the toolbar webview, so while the toolbar fills the
+            // window they are also shrunk to nothing, not only hidden.
+            let (width, height) = if full {
+                (0.0, 0.0)
+            } else {
+                (size.width, (size.height - TOOLBAR_HEIGHT).max(0.0))
+            };
+            let _ = webview.set_size(LogicalSize::new(width, height));
         }
     }
 }
