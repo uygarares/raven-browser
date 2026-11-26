@@ -49,14 +49,18 @@ pub struct TabsState {
     active: Option<u32>,
 }
 
-/// True for Raven's new tab page, whichever way the address is written.
+/// True for Raven's new tab page, whichever way the address is written:
+/// tauri.localhost in the installed app, 127.0.0.1 while developing (npm run dev).
 pub fn is_new_tab_url(url: &str) -> bool {
-    url == NEW_TAB
-        || url.is_empty()
-        || ((url.starts_with("tauri://localhost/")
-            || url.starts_with("http://tauri.localhost/")
-            || url.starts_with("https://tauri.localhost/"))
-            && url.contains(NEW_TAB_PAGE))
+    if url == NEW_TAB || url.is_empty() {
+        return true;
+    }
+    let Ok(parsed) = url.parse::<Url>() else { return false };
+    let own_host = matches!(
+        parsed.host_str(),
+        Some("tauri.localhost" | "localhost" | "127.0.0.1")
+    );
+    own_host && parsed.path() == format!("/{NEW_TAB_PAGE}")
 }
 
 /// Websites get the usual white page background, Raven's new tab page its dark one.
@@ -437,6 +441,7 @@ mod new_tab_tests {
         assert!(is_new_tab_url("raven:newtab"));
         assert!(is_new_tab_url("http://tauri.localhost/newtab.html"));
         assert!(is_new_tab_url("tauri://localhost/newtab.html"));
+        assert!(is_new_tab_url("http://127.0.0.1:1430/newtab.html"));
         assert!(!is_new_tab_url("https://example.com/newtab.html"));
         assert!(!is_new_tab_url("https://www.google.com/"));
     }
